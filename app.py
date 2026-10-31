@@ -17,6 +17,10 @@ st.set_page_config(
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
 
+# ================== رمز عبور ==================
+# اولویت: Streamlit Secrets → پیش‌فرض
+APP_PASSWORD = st.secrets.get("APP_PASSWORD", "S@mnet11970")
+
 # ================== توابع تاریخ ==================
 def today_jalali_str():
     return jdatetime.date.today().strftime("%Y/%m/%d")
@@ -99,7 +103,6 @@ st.markdown("""
     }
     section[data-testid="stSidebar"] [data-testid="stDownloadButton"] button { width: 100% !important; }
 
-    /* ============ موبایل ============ */
     @media (max-width: 768px) {
         .block-container {
             padding-top: 4rem !important;
@@ -111,29 +114,19 @@ st.markdown("""
         h2 { font-size: 1.1rem !important; }
         h3 { font-size: 0.98rem !important; }
         h4 { font-size: 0.92rem !important; }
-
         [data-testid="stMetricValue"] { font-size: 1.05rem !important; }
         [data-testid="stMetricLabel"] { font-size: 0.78rem !important; }
         [data-testid="stMetricDelta"] { font-size: 0.72rem !important; }
 
-        /* ستون‌ها: روی موبایل زیر هم */
         [data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
         [data-testid="stHorizontalBlock"] > [data-testid="column"] {
             flex: 1 1 100% !important;
             min-width: 100% !important;
             width: 100% !important;
         }
-
-        /* نوار پیل‌ها: اسکرول افقی نرم */
         [data-testid="stPills"] { width: 100% !important; }
-
-        /* جداول */
         [data-testid="stDataFrame"] { font-size: 0.8rem !important; }
-
-        /* سایدبار (وقتی باز است) */
         section[data-testid="stSidebar"] { font-size: 0.9rem; }
-
-        /* دکمه‌ها تمام عرض */
         [data-testid="stMainBlockContainer"] .stButton > button { width: 100% !important; }
     }
 
@@ -144,6 +137,62 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+# ================== 🔐 صفحه لاگین ==================
+def render_login():
+    # فاصله از بالا برای زیبایی
+    st.markdown("<div style='height: 6vh;'></div>", unsafe_allow_html=True)
+    
+    col_l, col_c, col_r = st.columns([1, 2, 1])
+    with col_c:
+        st.markdown("""
+        <div style="
+            text-align: center;
+            padding: 24px 0 16px 0;
+            direction: rtl;
+        ">
+            <div style="font-size: 3.2rem; line-height: 1; margin-bottom: 8px;">🔐</div>
+            <h1 style="margin: 0; color: #1e40af;">داشبورد مالی</h1>
+            <p style="color: #6b7280; margin-top: 8px; font-size: 0.95rem;">
+                لطفاً برای مشاهده، رمز عبور را وارد کنید
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.container(border=True):
+            with st.form("login_form", clear_on_submit=False):
+                password = st.text_input(
+                    "رمز عبور",
+                    type="password",
+                    placeholder="••••••••",
+                    label_visibility="collapsed",
+                )
+                submitted = st.form_submit_button("🚪 ورود", use_container_width=True)
+                if submitted:
+                    if password == APP_PASSWORD:
+                        st.session_state.authenticated = True
+                        st.session_state.login_attempts = 0
+                        st.rerun()
+                    else:
+                        st.session_state.login_attempts = st.session_state.get("login_attempts", 0) + 1
+                        st.error("❌ رمز عبور اشتباه است.")
+                        if st.session_state.login_attempts >= 5:
+                            st.warning(
+                                "⚠️ تعداد تلاش‌های ناموفق زیاد شده. "
+                                "لطفاً صفحه را ببندید و دوباره باز کنید."
+                            )
+        
+        st.caption(
+            "💡 این صفحه از دسترسی افراد ناشناس به داده‌های مالی جلوگیری می‌کند."
+        )
+
+# ✅ گیت لاگین — قبل از هر چیز
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    render_login()
+    st.stop()   # ← هیچ چیز دیگری رندر نمی‌شود
 
 # ================== GitHub ==================
 GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
@@ -350,12 +399,7 @@ def get_version(key):
 def bump_version(key):
     st.session_state[key] = st.session_state.get(key, 0) + 1
 
-# ================== ✅ تایم‌لاین رشد دارایی ==================
 def build_portfolio_timeline(data):
-    """برای هر تاریخ متمایز، ارزش کل دارایی را به ریال و دلار محاسبه می‌کند.
-    برای هر دارایی، آخرین رکورد ≤ آن تاریخ انتخاب می‌شود.
-    برای نرخ دلار، آخرین نرخ ≤ آن تاریخ استفاده می‌شود.
-    """
     assets = data.get("assets", [])
     usd_rates = sorted(data.get("usd_rates", []), key=lambda x: x.get("created_at", ""))
 
@@ -427,6 +471,15 @@ data.setdefault("usd_rates", [])
 with st.sidebar:
     st.markdown(f"### 🗓️ امروز: **{today_jalali_str()}**")
     st.caption(f"میلادی: {datetime.now().strftime('%Y-%m-%d')}")
+    
+    # ✅ دکمه خروج
+    if st.button("🚪 خروج از حساب", use_container_width=True, key="logout_btn"):
+        st.session_state.authenticated = False
+        st.session_state.login_attempts = 0
+        # پاک کردن داده حساس از حافظه سشن
+        st.session_state.pop("data", None)
+        st.rerun()
+    
     st.divider()
 
     rate, rate_date = get_current_usd_rate(data)
@@ -467,25 +520,23 @@ with st.sidebar:
                 "برای ماندگاری دائمی این کارها را انجام دهید:"
             )
             st.markdown(
-                "1. یک مخزن خالی در GitHub بسازید (مثلاً `financial-dashboard`)\n"
+                "1. یک مخزن **Private** در GitHub بسازید (مثلاً `financial-dashboard`)\n"
                 "2. یک توکن از "
                 "[GitHub → Settings → Developer settings → Personal access tokens]"
                 "(https://github.com/settings/tokens) با دسترسی `repo` بسازید\n"
                 "3. در Streamlit Cloud → **Manage app** → **Settings** → "
-                "**Secrets** این دو خط را وارد کنید:"
+                "**Secrets** این سه خط را وارد کنید:"
             )
             st.code(
                 'GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxx"\n'
-                'GITHUB_REPO = "your-username/financial-dashboard"',
+                'GITHUB_REPO = "your-username/financial-dashboard"\n'
+                'APP_PASSWORD = "S@mnet11970"',
                 language="toml",
             )
             st.markdown("4. ذخیره کنید و اپ را **Reboot** کنید.")
             st.caption(
-                "**اگر روی سیستم خودتان اجرا می‌کنید:** "
-                "پوشه `.streamlit/secrets.toml` را کنار `app.py` بسازید "
-                "و همان دو خط بالا را در آن بریزید."
+                "**توجه:** مخزن را Private کنید تا فایل `data.json` برای عموم قابل مشاهده نباشد."
             )
-            st.caption("**توجه:** نام مخزن باید دقیقاً به شکل `username/repo-name` باشد.")
     else:
         st.caption(f"✅ {gh_message}")
 
@@ -511,7 +562,7 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"فایل معتبر نیست: {e}")
 
-# ================== ناوبری با st.pills (بومی و ریسپانسیو) ==================
+# ================== ناوبری ==================
 nav_options = ["overview", "journal", "usd"]
 for a in data.get("assets", []):
     nav_options.append(f"asset_{a['id']}")
@@ -524,7 +575,6 @@ nav_labels = {
 for a in data.get("assets", []):
     nav_labels[f"asset_{a['id']}"] = f"{asset_icon(a)} {a['name']}"
 
-# انتقال ناوبری برنامه‌ریزی‌شده
 if "pending_nav" in st.session_state:
     st.session_state.nav_tab = st.session_state.pending_nav
     del st.session_state.pending_nav
@@ -532,7 +582,6 @@ if "pending_nav" in st.session_state:
 if "nav_tab" not in st.session_state or st.session_state.nav_tab not in nav_options:
     st.session_state.nav_tab = "overview"
 
-# انتخاب تب — pills در Streamlit 1.40+، fallback به radio
 if hasattr(st, "pills"):
     selected = st.pills(
         "ناوبری",
@@ -602,11 +651,9 @@ if selected == "overview":
         else:
             st.info("برای نمایش پای‌چارت، ابتدا نرخ دلار را ثبت کنید.")
 
-        # ✅✅✅ نمودار روند رشد دارایی ==================
         st.subheader("📈 روند رشد ارزش کل دارایی")
         timeline = build_portfolio_timeline(data)
         if len(timeline) >= 2:
-            # ---- نمودار به دلار ----
             fig_usd = px.line(
                 timeline, x="date_jalali", y="total_usd", markers=True,
                 labels={"date_jalali": "تاریخ", "total_usd": "ارزش (دلار)"},
@@ -626,7 +673,6 @@ if selected == "overview":
             )
             st.plotly_chart(fig_usd, use_container_width=True)
 
-            # ---- نمودار به ریال ----
             fig_irr = px.line(
                 timeline, x="date_jalali", y="total_irr", markers=True,
                 labels={"date_jalali": "تاریخ", "total_irr": "ارزش (ریال)"},
@@ -646,28 +692,26 @@ if selected == "overview":
             )
             st.plotly_chart(fig_irr, use_container_width=True)
 
-            # ---- خلاصه رشد ----
-            if len(timeline) >= 2:
-                first_usd = timeline["total_usd"].iloc[0]
-                last_usd = timeline["total_usd"].iloc[-1]
-                first_irr = timeline["total_irr"].iloc[0]
-                last_irr = timeline["total_irr"].iloc[-1]
-                d_usd = last_usd - first_usd
-                d_irr = last_irr - first_irr
-                pct_usd = ((last_usd / first_usd - 1) * 100) if first_usd else 0
-                pct_irr = ((last_irr / first_irr - 1) * 100) if first_irr else 0
+            first_usd = timeline["total_usd"].iloc[0]
+            last_usd = timeline["total_usd"].iloc[-1]
+            first_irr = timeline["total_irr"].iloc[0]
+            last_irr = timeline["total_irr"].iloc[-1]
+            d_usd = last_usd - first_usd
+            d_irr = last_irr - first_irr
+            pct_usd = ((last_usd / first_usd - 1) * 100) if first_usd else 0
+            pct_irr = ((last_irr / first_irr - 1) * 100) if first_irr else 0
 
-                g1, g2 = st.columns(2)
-                g1.metric(
-                    "تغییر ارزش (دلاری)",
-                    f"${last_usd:,.2f}",
-                    delta=f"{d_usd:+,.2f} ({pct_usd:+.1f}%)",
-                )
-                g2.metric(
-                    "تغییر ارزش (ریالی)",
-                    f"{last_irr:,.0f} ریال",
-                    delta=f"{d_irr:+,.0f} ({pct_irr:+.1f}%)",
-                )
+            g1, g2 = st.columns(2)
+            g1.metric(
+                "تغییر ارزش (دلاری)",
+                f"${last_usd:,.2f}",
+                delta=f"{d_usd:+,.2f} ({pct_usd:+.1f}%)",
+            )
+            g2.metric(
+                "تغییر ارزش (ریالی)",
+                f"{last_irr:,.0f} ریال",
+                delta=f"{d_irr:+,.0f} ({pct_irr:+.1f}%)",
+            )
         elif len(timeline) == 1:
             st.info(
                 "📊 برای نمایش نمودار روند، حداقل دو رکورد در تاریخ‌های مختلف "
