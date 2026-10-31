@@ -449,5 +449,4 @@ with st.sidebar:
     if gh_status != "ok":
         st.warning(f"GitHub: {gh_message}", icon="⚠️")
         with st.expander("🔧 چطور GitHub را تنظیم کنم؟", expanded=False):
-            st.markdown("""
-
+            st.markdown(""")
