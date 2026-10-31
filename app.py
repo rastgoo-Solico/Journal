@@ -54,15 +54,12 @@ def fmt_num(x):
         return str(x)
 
 # ================== CSS ==================
-# نکته کلیدی: ابتدا همه چیز Vazirmatn، سپس آیکون‌های Material را با !important بازمی‌گردانیم
 st.markdown("""
 <style>
     @import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css');
 
-    /* فونت اصلی همه‌جا */
     * { font-family: 'Vazirmatn', 'B Nazanin', Tahoma, sans-serif !important; }
 
-    /* ✅✅✅ بازگرداندن فونت آیکون‌های Material (رفع تداخل keyboard_arrow_down) ✅✅✅ */
     .material-symbols-rounded,
     .material-symbols-outlined,
     .material-symbols-sharp,
@@ -79,14 +76,12 @@ st.markdown("""
         -webkit-font-feature-settings: 'liga' !important;
     }
 
-    /* RTL */
     .stApp { direction: rtl; }
     h1, h2, h3, h4, h5, h6, p, label, .stMarkdown, .stCaption, .stText { text-align: right !important; }
     input, textarea, select { direction: rtl !important; text-align: right !important; }
     table { direction: rtl !important; }
     table th, table td { text-align: right !important; }
 
-    /* جلوگیری از گم شدن تب‌ها زیر هدر */
     .block-container {
         padding-top: 4.5rem !important;
         padding-bottom: 2.5rem !important;
@@ -94,7 +89,6 @@ st.markdown("""
     }
     header[data-testid="stHeader"] { z-index: 999 !important; }
 
-    /* سایدبار */
     section[data-testid="stSidebar"] { direction: rtl !important; }
     section[data-testid="stSidebar"] .stMarkdown,
     section[data-testid="stSidebar"] p,
@@ -113,7 +107,6 @@ st.markdown("""
         display: flex !important;
     }
 
-    /* ناوبری بالا */
     [data-testid="stMainBlockContainer"] div[data-testid="stRadio"] > div[role="radiogroup"] {
         flex-direction: row !important; flex-wrap: wrap !important; gap: 0.25rem !important;
         border-bottom: 1px solid #e5e7eb !important; margin-bottom: 1.5rem !important;
@@ -136,7 +129,6 @@ st.markdown("""
 
     section[data-testid="stSidebar"] [data-testid="stDownloadButton"] button { width: 100% !important; }
 
-    /* ✅✅✅ ریسپانسیو موبایل ✅✅✅ */
     @media (max-width: 768px) {
         .block-container {
             padding-top: 4rem !important;
@@ -151,7 +143,6 @@ st.markdown("""
         [data-testid="stMetricValue"] { font-size: 1.05rem !important; }
         [data-testid="stMetricLabel"] { font-size: 0.78rem !important; }
 
-        /* نوار ناوبری: اسکرول افقی */
         [data-testid="stMainBlockContainer"] div[data-testid="stRadio"] > div[role="radiogroup"] {
             flex-wrap: nowrap !important;
             overflow-x: auto !important;
@@ -165,29 +156,19 @@ st.markdown("""
             flex-shrink: 0 !important;
         }
 
-        /* استک کردن همه ستون‌ها */
-        [data-testid="stHorizontalBlock"] {
-            flex-wrap: wrap !important;
-        }
+        [data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
         [data-testid="stHorizontalBlock"] > [data-testid="column"] {
             flex: 1 1 100% !important;
             min-width: 100% !important;
             width: 100% !important;
         }
 
-        /* جداول: کوچک‌تر */
         [data-testid="stDataFrame"] { font-size: 0.8rem !important; }
-
-        /* کارت‌های تاریخچه رکورد: بج‌ها کوچک‌تر */
         section[data-testid="stSidebar"] { font-size: 0.9rem; }
     }
 
-    /* ✅ حتی روی موبایل کوچک‌تر */
     @media (max-width: 400px) {
-        .block-container {
-            padding-left: 0.5rem !important;
-            padding-right: 0.5rem !important;
-        }
+        .block-container { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
         h1 { font-size: 1.2rem !important; }
         [data-testid="stMetricValue"] { font-size: 0.95rem !important; }
     }
@@ -208,7 +189,6 @@ def github_headers():
 
 @st.cache_data(ttl=120, show_spinner=False)
 def check_github_status(token, repo):
-    """تشخیص دقیق وضعیت اتصال GitHub"""
     if not token and not repo:
         return "no_config", "هیچ‌کدام از GITHUB_TOKEN و GITHUB_REPO تنظیم نشده‌اند."
     if not token:
@@ -334,7 +314,6 @@ def migrate_data(data):
     if "usd_rates" not in data or not isinstance(data.get("usd_rates"), list):
         data["usd_rates"] = []
 
-    # تضمین وجود icon روی همه دارایی‌ها
     for a in data["assets"]:
         if "icon" not in a or not a["icon"]:
             a["icon"] = "📁"
@@ -437,7 +416,7 @@ with st.sidebar:
 
     st.divider()
 
-    # ✅✅✅ وضعیت ذخیره‌سازی با تشخیص دقیق ✅✅✅
+    # ✅ وضعیت ذخیره‌سازی با تشخیص دقیق
     st.markdown("**💾 وضعیت ذخیره‌سازی**")
     local_ok = os.path.exists(DATA_FILE)
     gh_status, gh_message = check_github_status(GITHUB_TOKEN, GITHUB_REPO)
@@ -448,15 +427,480 @@ with st.sidebar:
 
     if gh_status != "ok":
         st.warning(f"GitHub: {gh_message}", icon="⚠️")
+
+        # ✅✅✅ راهنمای GitHub — بدون code fence داخل رشته ✅✅✅
         with st.expander("🔧 چطور GitHub را تنظیم کنم؟", expanded=False):
-            st.markdown("""
-**اگر روی Streamlit Community Cloud هستید** (ضروری):
-داده‌های فایل محلی با هر بار ری‌استارت کانتینر پاک می‌شوند. برای ماندگاری دائمی:
+            st.markdown(
+                "**اگر روی Streamlit Community Cloud هستید (ضروری):**"
+            )
+            st.caption(
+                "داده‌های فایل محلی با هر بار ری‌استارت کانتینر پاک می‌شوند. "
+                "برای ماندگاری دائمی این کارها را انجام دهید:"
+            )
+            st.markdown(
+                "1. یک مخزن خالی در GitHub بسازید (مثلاً `financial-dashboard`)\n"
+                "2. یک توکن از "
+                "[GitHub → Settings → Developer settings → Personal access tokens]"
+                "(https://github.com/settings/tokens) با دسترسی `repo` بسازید\n"
+                "3. در Streamlit Cloud → **Manage app** → **Settings** → "
+                "**Secrets** این دو خط را وارد کنید:"
+            )
+            st.code(
+                'GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxx"\n'
+                'GITHUB_REPO = "your-username/financial-dashboard"',
+                language="toml",
+            )
+            st.markdown("4. ذخیره کنید و اپ را **Reboot** کنید.")
+            st.caption(
+                "**اگر روی سیستم خودتان اجرا می‌کنید:** "
+                "پوشه `.streamlit/secrets.toml` را کنار `app.py` بسازید "
+                "و همان دو خط بالا را در آن بریزید."
+            )
+            st.caption(
+                "**توجه:** نام مخزن باید دقیقاً به شکل "
+                "`username/repo-name` باشد."
+            )
+    else:
+        st.caption(f"✅ {gh_message}")
 
-1. یک مخزن خالی در GitHub بسازید (مثلاً `financial-dashboard`)
-2. یک توکن از [GitHub → Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens) با دسترسی `repo` بسازید
-3. در Streamlit Cloud → **Manage app** → **Settings** → **Secrets** این متن را وارد کنید:
+    st.divider()
 
-```toml
-GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxx"
-GITHUB_REPO = "your-username/financial-dashboard"
+    with st.expander("📥 پشتیبان‌گیری / 📤 بازیابی", expanded=False):
+        st.download_button(
+            "📥 دانلود فایل JSON",
+            data=json.dumps(data, ensure_ascii=False, indent=2),
+            file_name=f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+        uploaded = st.file_uploader("📤 آپلود فایل پشتیبان", type=["json"], key="uploader")
+        if uploaded is not None:
+            try:
+                imported = json.loads(uploaded.read().decode("utf-8"))
+                imported = migrate_data(imported)
+                if st.button("✅ اعمال و ذخیره بازیابی", use_container_width=True):
+                    st.session_state.data = imported
+                    save_all(imported)
+                    st.rerun()
+            except Exception as e:
+                st.error(f"فایل معتبر نیست: {e}")
+
+# ================== نوار ناوبری ==================
+nav_options = ["overview", "journal", "usd"]
+for a in data.get("assets", []):
+    nav_options.append(f"asset_{a['id']}")
+
+nav_labels = {
+    "overview": "📊 نمای کلی",
+    "journal": "+ افزودن دارایی",
+    "usd": "💵 دلار",
+}
+for a in data.get("assets", []):
+    nav_labels[f"asset_{a['id']}"] = f"{asset_icon(a)} {a['name']}"
+
+if "pending_nav" in st.session_state:
+    st.session_state.nav_tab = st.session_state.pending_nav
+    del st.session_state.pending_nav
+
+if "nav_tab" not in st.session_state or st.session_state.nav_tab not in nav_options:
+    st.session_state.nav_tab = "overview"
+
+selected = st.radio(
+    "ناوبری",
+    options=nav_options,
+    format_func=lambda x: nav_labels.get(x, x),
+    horizontal=True,
+    label_visibility="collapsed",
+    key="nav_tab",
+)
+
+# ================== صفحه ۱: نمای کلی ==================
+if selected == "overview":
+    st.header("📊 نمای کلی دارایی‌ها")
+    assets = data.get("assets", [])
+    rate, _ = get_current_usd_rate(data)
+
+    if not assets:
+        st.info("هنوز دارایی‌ای ثبت نشده. از تب «+ افزودن دارایی» اضافه کنید.")
+    else:
+        rows = []
+        total_usd = 0.0
+        for a in assets:
+            value, usd_val, rec = compute_asset_value(a, rate)
+            if usd_val is not None:
+                total_usd += usd_val
+            rows.append({
+                "دارایی": f"{asset_icon(a)} {a['name']}",
+                "ارز": currency_label(a["currency"]),
+                "تعداد": rec["quantity"] if rec else 0,
+                "قیمت واحد": rec["unit_price"] if rec else 0,
+                "ارزش": value,
+                "معادل_دلاری": usd_val,
+                "آخرین_تاریخ": rec["date_jalali"] if rec else "—",
+            })
+        df = pd.DataFrame(rows)
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("💰 کل ارزش (دلاری)", f"${total_usd:,.2f}")
+        c2.metric("📁 تعداد دارایی‌ها", len(assets))
+        c3.metric("💵 نرخ دلار", f"{rate:,.0f} ریال" if rate else "ثبت نشده")
+
+        st.subheader("🥧 ترکیب دارایی‌ها")
+        pie_df = df.dropna(subset=["معادل_دلاری"])
+        pie_df = pie_df[pie_df["معادل_دلاری"] > 0]
+        if not pie_df.empty:
+            fig = px.pie(
+                pie_df, values="معادل_دلاری", names="دارایی", hole=0.4,
+                color_discrete_sequence=px.colors.qualitative.Set3,
+            )
+            fig.update_layout(
+                font=dict(family="Vazirmatn, B Nazanin, Tahoma", size=14),
+                legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
+                margin=dict(t=20, b=20, l=10, r=10),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("برای نمایش پای‌چارت، ابتدا نرخ دلار را ثبت کنید.")
+
+        st.subheader("📋 جدول دارایی‌ها")
+        disp = df.copy()
+        disp["تعداد"] = disp["تعداد"].apply(fmt_num)
+        disp["قیمت واحد"] = disp.apply(
+            lambda r: f"{fmt_num(r['قیمت واحد'])} {r['ارز']}" if r['قیمت واحد'] else "—", axis=1)
+        disp["ارزش"] = disp.apply(
+            lambda r: f"{fmt_num(r['ارزش'])} {r['ارز']}" if r['ارزش'] else "—", axis=1)
+        disp["معادل_دلاری"] = disp["معادل_دلاری"].apply(
+            lambda x: f"${x:,.2f}" if pd.notna(x) else "—")
+        disp = disp[["دارایی", "تعداد", "قیمت واحد", "ارزش", "معادل_دلاری", "آخرین_تاریخ"]]
+        disp.columns = ["دارایی", "تعداد", "قیمت واحد", "ارزش", "معادل دلاری", "آخرین بروزرسانی"]
+        st.dataframe(disp, use_container_width=True, hide_index=True)
+
+# ================== صفحه ۲: افزودن دارایی ==================
+elif selected == "journal":
+    st.header("+ افزودن دارایی")
+
+    with st.container(border=True):
+        st.subheader("➕ ثبت دارایی جدید")
+        with st.form("add_asset_form", clear_on_submit=True):
+            c1, c2, c3 = st.columns([1, 3, 2])
+            icon = c1.text_input(
+                "آیکون", value="📁", max_chars=4,
+                help="ایموجی دلخواه: 🥇 💰 🏦 💎 🏠 🚗 📈 🪙 💵 🏭",
+            )
+            name = c2.text_input("نام دارایی", placeholder="طلا، سهام، بیت‌کوین...")
+            cur = c3.selectbox("ارز ثبت قیمت", ["IRR", "USD"],
+                               format_func=lambda x: "ریال" if x == "IRR" else "دلار")
+
+            st.markdown("**📝 رکورد اولیه (اختیاری)**")
+            c4, c5, c6 = st.columns([2, 2, 3])
+            q0 = c4.number_input("تعداد اولیه", min_value=0.0, format="%.4f", step=1.0)
+            p0 = c5.number_input("قیمت واحد اولیه", min_value=0.0, format="%.2f", step=1000.0)
+            note0 = c6.text_input("توضیح", placeholder="اختیاری")
+
+            if st.form_submit_button("💾 ایجاد دارایی", use_container_width=True):
+                if not name.strip():
+                    st.error("نام دارایی را وارد کنید.")
+                else:
+                    asset_id = datetime.now().isoformat()
+                    icon_clean = (icon.strip() or "📁")[:4]
+                    records = []
+                    if q0 > 0 and p0 > 0:
+                        records.append({
+                            "id": asset_id + "_r0",
+                            "date_gregorian": asset_id,
+                            "date_jalali": today_jalali_str(),
+                            "quantity": q0,
+                            "unit_price": p0,
+                            "note": note0.strip() or "رکورد اولیه",
+                        })
+                    data.setdefault("assets", []).append({
+                        "id": asset_id,
+                        "name": name.strip(),
+                        "icon": icon_clean,
+                        "currency": cur,
+                        "created_at_gregorian": asset_id,
+                        "created_at_jalali": today_jalali_str(),
+                        "records": records,
+                    })
+                    st.session_state.data = data
+                    save_all(data)
+                    st.session_state.pending_nav = f"asset_{asset_id}"
+                    st.rerun()
+
+    assets = data.get("assets", [])
+    if not assets:
+        st.info("هنوز دارایی‌ای ثبت نشده.")
+    else:
+        st.subheader("📝 لیست دارایی‌ها")
+        rate, _ = get_current_usd_rate(data)
+        for a in assets:
+            value, usd_val, rec = compute_asset_value(a, rate)
+            with st.container(border=True):
+                c1, c2, c3, c4, c5 = st.columns([3, 2, 3, 2, 1])
+                c1.markdown(f"**{asset_icon(a)} {a['name']}**")
+                c2.caption(currency_label(a["currency"]))
+                c3.caption(f"آخرین رکورد: {rec['date_jalali'] if rec else '—'}")
+                c4.write(f"{fmt_num(value)} {currency_label(a['currency'])}" if value else "—")
+                if c5.button("🗑️", key=f"del_asset_{a['id']}", help="حذف دارایی"):
+                    data["assets"] = [x for x in data["assets"] if x["id"] != a["id"]]
+                    st.session_state.data = data
+                    save_all(data)
+                    st.session_state.pending_nav = "overview"
+                    st.rerun()
+
+# ================== صفحه ۳: دلار ==================
+elif selected == "usd":
+    st.header("💵 نرخ دلار به ریال")
+    st.caption(f"📅 امروز — شمسی: **{today_jalali_str()}** | میلادی: {datetime.now().strftime('%Y-%m-%d')}")
+
+    with st.container(border=True):
+        st.subheader("➕ ثبت نرخ جدید")
+        with st.form("usd_rate_form", clear_on_submit=True):
+            c1, c2 = st.columns([2, 3])
+            new_rate = c1.number_input("نرخ دلار (ریال)", min_value=0, step=1000, format="%d")
+            note = c2.text_input("توضیح (اختیاری)", placeholder="بازار آزاد")
+            if st.form_submit_button("💾 ثبت نرخ", use_container_width=True):
+                if new_rate > 0:
+                    now = datetime.now().isoformat()
+                    data.setdefault("usd_rates", []).append({
+                        "id": now, "rate": new_rate, "note": note.strip(),
+                        "created_at": now, "created_at_jalali": today_jalali_str(),
+                    })
+                    st.session_state.data = data
+                    save_all(data)
+                    st.rerun()
+                else:
+                    st.error("نرخ باید بزرگتر از صفر باشد.")
+
+    rates = data.get("usd_rates", [])
+    if not rates:
+        st.info("هنوز نرخی ثبت نشده.")
+    else:
+        sorted_r = sorted(rates, key=lambda x: x.get("created_at", ""))
+        current, current_date = get_current_usd_rate(data)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("نرخ فعلی", f"{current:,.0f} ریال")
+        c2.metric("تعداد ثبت‌ها", len(rates))
+        c3.metric("آخرین بروزرسانی", current_date or "—")
+
+        st.subheader("📈 روند نرخ دلار")
+        chart_df = pd.DataFrame(sorted_r)
+        chart_df["تاریخ"] = chart_df["created_at_jalali"]
+        fig = px.line(chart_df, x="تاریخ", y="rate", markers=True,
+                      labels={"تاریخ": "تاریخ", "rate": "نرخ (ریال)"})
+        fig.update_layout(font=dict(family="Vazirmatn, B Nazanin, Tahoma", size=13),
+                         margin=dict(t=20, b=20))
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("📋 تاریخچه نرخ‌ها")
+        for r in reversed(sorted_r):
+            with st.container(border=True):
+                c1, c2, c3, c4, c5 = st.columns([2, 2, 3, 3, 1])
+                c1.markdown(f"**{r['rate']:,.0f} ریال**")
+                c2.caption(f"📅 {r.get('created_at_jalali', '—')}")
+                c3.caption(r.get("note", "—") or "—")
+                c4.caption(iso_to_jalali(r.get("created_at", ""), with_time=True))
+                if c5.button("🗑️", key=f"delrate_{r['id']}", help="حذف"):
+                    data["usd_rates"] = [x for x in data["usd_rates"] if x["id"] != r["id"]]
+                    st.session_state.data = data
+                    save_all(data)
+                    st.rerun()
+
+                vkey = f"v_rate_{r['id']}"
+                fk = f"edit_rate_{r['id']}_v{get_version(vkey)}"
+                with st.expander("✏️ ویرایش این نرخ"):
+                    with st.form(fk):
+                        ec1, ec2 = st.columns([2, 3])
+                        er_date = ec1.text_input("تاریخ (شمسی)", value=r.get("created_at_jalali", today_jalali_str()))
+                        er_rate = ec2.number_input("نرخ (ریال)", value=int(r["rate"]), min_value=1, step=1000, format="%d")
+                        er_note = st.text_input("توضیح", value=r.get("note", ""))
+                        if st.form_submit_button("💾 ذخیره تغییرات", use_container_width=True):
+                            jdate = parse_jalali(er_date)
+                            if jdate is None:
+                                st.error("تاریخ نامعتبر است. مثال: 1405/08/09")
+                            elif er_rate <= 0:
+                                st.error("نرخ باید بزرگتر از صفر باشد.")
+                            else:
+                                time_part = r["created_at"][11:16] if len(r.get("created_at", "")) >= 16 else "00:00"
+                                giso = jalali_to_gregorian_iso(jdate, time_part)
+                                for i, x in enumerate(data["usd_rates"]):
+                                    if x["id"] == r["id"]:
+                                        data["usd_rates"][i] = {
+                                            "id": r["id"], "rate": er_rate, "note": er_note.strip(),
+                                            "created_at": giso, "created_at_jalali": jdate.strftime("%Y/%m/%d"),
+                                        }
+                                        break
+                                st.session_state.data = data
+                                bump_version(vkey)
+                                save_all(data)
+                                st.rerun()
+
+# ================== صفحه ۴: دارایی اختصاصی ==================
+elif selected.startswith("asset_"):
+    asset_id = selected.replace("asset_", "")
+    asset = next((a for a in data.get("assets", []) if a["id"] == asset_id), None)
+    if asset is None:
+        st.error("دارایی یافت نشد.")
+    else:
+        rate, _ = get_current_usd_rate(data)
+        value, usd_val, rec = compute_asset_value(asset, rate)
+
+        st.header(f"{asset_icon(asset)} {asset['name']}")
+        st.caption(
+            f"ارز: **{currency_label(asset['currency'])}** | "
+            f"تاریخ ایجاد: {asset.get('created_at_jalali', '—')}"
+        )
+
+        avkey = f"v_asset_{asset['id']}"
+        afk = f"edit_asset_{asset['id']}_v{get_version(avkey)}"
+        with st.expander("⚙️ تنظیمات دارایی (نام، آیکون، ارز)"):
+            with st.form(afk):
+                ac1, ac2, ac3 = st.columns([1, 3, 2])
+                new_icon = ac1.text_input("آیکون", value=asset_icon(asset), max_chars=4,
+                                          help="مثال: 🥇 💰 🏦 💎 🏠 🚗 📈")
+                new_name = ac2.text_input("نام دارایی", value=asset["name"])
+                new_cur = ac3.selectbox(
+                    "ارز قیمت‌گذاری", ["IRR", "USD"],
+                    index=0 if asset["currency"] == "IRR" else 1,
+                    format_func=lambda x: "ریال" if x == "IRR" else "دلار",
+                )
+                st.caption("⚠️ تغییر ارز باعث تفسیر مجدد رکوردهای قبلی با ارز جدید می‌شود.")
+                if st.form_submit_button("💾 ذخیره تنظیمات", use_container_width=True):
+                    if not new_name.strip():
+                        st.error("نام دارایی را وارد کنید.")
+                    else:
+                        for i, a in enumerate(data["assets"]):
+                            if a["id"] == asset["id"]:
+                                data["assets"][i]["name"] = new_name.strip()
+                                data["assets"][i]["icon"] = (new_icon.strip() or "📁")[:4]
+                                data["assets"][i]["currency"] = new_cur
+                                break
+                        st.session_state.data = data
+                        bump_version(avkey)
+                        save_all(data)
+                        st.rerun()
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("📦 آخرین تعداد", fmt_num(rec["quantity"]) if rec else "—")
+        c2.metric("💲 آخرین قیمت واحد",
+                  f"{fmt_num(rec['unit_price'])} {currency_label(asset['currency'])}" if rec else "—")
+        c3.metric("💰 ارزش فعلی",
+                  f"{fmt_num(value)} {currency_label(asset['currency'])}" if rec else "—")
+        if usd_val is not None:
+            c4.metric("💵 معادل دلاری", f"${usd_val:,.2f}")
+        else:
+            c4.metric("💵 معادل دلاری", "—", help="نرخ دلار ثبت نشده")
+
+        with st.container(border=True):
+            st.subheader("➕ ثبت رکورد روزانه")
+            st.caption("قیمت و تعداد هر روز را اینجا ثبت کنید. تاریخ شمسی (YYYY/MM/DD).")
+            with st.form(f"add_record_{asset['id']}", clear_on_submit=True):
+                c1, c2, c3, c4 = st.columns([2, 2, 2, 3])
+                date_text = c1.text_input("تاریخ (شمسی)", value=today_jalali_str(), placeholder="1405/08/09")
+                qty = c2.number_input("تعداد", min_value=0.0, format="%.4f", step=1.0)
+                price = c3.number_input(
+                    f"قیمت واحد ({currency_label(asset['currency'])})",
+                    min_value=0.0, format="%.2f", step=1000.0)
+                note = c4.text_input("توضیح (اختیاری)")
+
+                if st.form_submit_button("💾 ثبت رکورد", use_container_width=True):
+                    jdate = parse_jalali(date_text)
+                    if jdate is None:
+                        st.error("تاریخ معتبر نیست. مثال: 1405/08/09")
+                    elif qty <= 0:
+                        st.error("تعداد باید بزرگتر از صفر باشد.")
+                    elif price <= 0:
+                        st.error("قیمت واحد باید بزرگتر از صفر باشد.")
+                    else:
+                        giso = jalali_to_gregorian_iso(jdate, datetime.now().strftime("%H:%M"))
+                        asset.setdefault("records", []).append({
+                            "id": datetime.now().isoformat(),
+                            "date_gregorian": giso,
+                            "date_jalali": jdate.strftime("%Y/%m/%d"),
+                            "quantity": qty,
+                            "unit_price": price,
+                            "note": note.strip(),
+                        })
+                        st.session_state.data = data
+                        save_all(data)
+                        st.rerun()
+
+        records = sorted(asset.get("records", []), key=lambda r: r.get("date_gregorian", ""))
+        if len(records) >= 2:
+            st.subheader("📈 روند ارزش دارایی")
+            chart_rows = [{"تاریخ": r["date_jalali"], "ارزش": r["quantity"] * r["unit_price"]} for r in records]
+            cdf = pd.DataFrame(chart_rows)
+            fig = px.line(cdf, x="تاریخ", y="ارزش", markers=True,
+                         labels={"تاریخ": "تاریخ", "ارزش": f"ارزش ({currency_label(asset['currency'])})"})
+            fig.update_layout(font=dict(family="Vazirmatn, B Nazanin, Tahoma", size=13),
+                             margin=dict(t=20, b=20))
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("📋 تاریخچه رکوردها")
+        if not records:
+            st.info("هنوز رکوردی ثبت نشده.")
+        else:
+            for r in reversed(records):
+                with st.container(border=True):
+                    c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 3, 3, 2, 1])
+                    c1.markdown(f"**📅 {r['date_jalali']}**")
+                    c2.caption(f"تعداد: {fmt_num(r['quantity'])}")
+                    c3.caption(f"قیمت: {fmt_num(r['unit_price'])} {currency_label(asset['currency'])}")
+                    val = r['quantity'] * r['unit_price']
+                    c4.markdown(f"**{fmt_num(val)} {currency_label(asset['currency'])}**")
+                    c5.caption(r.get("note", "—") or "—")
+                    if c6.button("🗑️", key=f"del_rec_{r['id']}", help="حذف رکورد"):
+                        asset["records"] = [x for x in asset["records"] if x["id"] != r["id"]]
+                        st.session_state.data = data
+                        save_all(data)
+                        st.rerun()
+
+                    rvkey = f"v_rec_{r['id']}"
+                    rfk = f"edit_rec_{r['id']}_v{get_version(rvkey)}"
+                    with st.expander("✏️ ویرایش این رکورد"):
+                        with st.form(rfk):
+                            ec1, ec2, ec3 = st.columns([2, 2, 2])
+                            ed_date = ec1.text_input("تاریخ (شمسی)", value=r["date_jalali"])
+                            ed_qty = ec2.number_input("تعداد", value=float(r["quantity"]),
+                                                     min_value=0.0, format="%.4f", step=1.0)
+                            ed_price = ec3.number_input(
+                                f"قیمت واحد ({currency_label(asset['currency'])})",
+                                value=float(r["unit_price"]),
+                                min_value=0.0, format="%.2f", step=1000.0)
+                            ed_note = st.text_input("توضیح", value=r.get("note", ""))
+                            if st.form_submit_button("💾 ذخیره تغییرات", use_container_width=True):
+                                jdate = parse_jalali(ed_date)
+                                if jdate is None:
+                                    st.error("تاریخ نامعتبر است. مثال: 1405/08/09")
+                                elif ed_qty <= 0:
+                                    st.error("تعداد باید بزرگتر از صفر باشد.")
+                                elif ed_price <= 0:
+                                    st.error("قیمت واحد باید بزرگتر از صفر باشد.")
+                                else:
+                                    time_part = r["date_gregorian"][11:16] if len(r.get("date_gregorian", "")) >= 16 else "00:00"
+                                    giso = jalali_to_gregorian_iso(jdate, time_part)
+                                    for i, x in enumerate(asset["records"]):
+                                        if x["id"] == r["id"]:
+                                            asset["records"][i] = {
+                                                "id": r["id"],
+                                                "date_gregorian": giso,
+                                                "date_jalali": jdate.strftime("%Y/%m/%d"),
+                                                "quantity": ed_qty,
+                                                "unit_price": ed_price,
+                                                "note": ed_note.strip(),
+                                            }
+                                            break
+                                    st.session_state.data = data
+                                    bump_version(rvkey)
+                                    save_all(data)
+                                    st.rerun()
+
+        st.divider()
+        with st.expander("⚠️ حذف کل دارایی"):
+            confirm = st.checkbox("مطمئنم", key=f"confirm_del_asset_{asset['id']}")
+            if st.button("🗑️ حذف دارایی", disabled=not confirm, key=f"del_asset_btn_{asset['id']}"):
+                data["assets"] = [x for x in data["assets"] if x["id"] != asset["id"]]
+                st.session_state.data = data
+                save_all(data)
+                st.session_state.pending_nav = "overview"
+                st.rerun()
