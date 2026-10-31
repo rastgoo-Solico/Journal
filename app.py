@@ -450,13 +450,4 @@ with st.sidebar:
         st.warning(f"GitHub: {gh_message}", icon="⚠️")
         with st.expander("🔧 چطور GitHub را تنظیم کنم؟", expanded=False):
             st.markdown("""
-**اگر روی Streamlit Community Cloud هستید** (ضروری):
-داده‌های فایل محلی با هر بار ری‌استارت کانتینر پاک می‌شوند. برای ماندگاری دائمی:
 
-1. یک مخزن خالی در GitHub بسازید (مثلاً `financial-dashboard`)
-2. یک توکن از [GitHub → Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens) با دسترسی `repo` بسازید
-3. در Streamlit Cloud → **Manage app** → **Settings** → **Secrets** این متن را وارد کنید:
-
-```toml
-GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxx"
-GITHUB_REPO = "your-username/financial-dashboard"
