@@ -171,15 +171,13 @@ def save_github_file(data):
     except Exception:
         return False
 
-# ================== مهاجرت داده (idempotent) ==================
+# ================== مهاجرت داده ==================
 def migrate_data(data):
-    """هر ساختار قدیمی را به ساختار assets تبدیل می‌کند. بی‌خطر و idempotent است."""
     if not isinstance(data, dict):
         return {"assets": [], "usd_rates": []}
     if not data:
         return {"assets": [], "usd_rates": []}
     
-    # usd_rate قدیمی → usd_rates
     if "usd_rates" not in data or not isinstance(data.get("usd_rates"), list):
         old_rate = data.get("usd_rate")
         data["usd_rates"] = []
@@ -193,7 +191,6 @@ def migrate_data(data):
             })
         data.pop("usd_rate", None)
     
-    # journals قدیمی → assets
     if "journals" in data and isinstance(data.get("journals"), list):
         if "assets" not in data or not isinstance(data.get("assets"), list):
             data["assets"] = []
@@ -219,7 +216,6 @@ def migrate_data(data):
             })
         data.pop("journals", None)
     
-    # تضمین نهایی
     if "assets" not in data or not isinstance(data.get("assets"), list):
         data["assets"] = []
     if "usd_rates" not in data or not isinstance(data.get("usd_rates"), list):
@@ -276,15 +272,20 @@ def compute_asset_value(asset, usd_rate):
 def currency_label(cur):
     return "ریال" if cur == "IRR" else "دلار"
 
-# ================== مقداردهی (با رفع باگ KeyError) ==================
+def get_version(key):
+    if key not in st.session_state:
+        st.session_state[key] = 0
+    return st.session_state[key]
+
+def bump_version(key):
+    st.session_state[key] = st.session_state.get(key, 0) + 1
+
+# ================== مقداردهی ==================
 if "data" not in st.session_state:
     st.session_state.data = load_all()
 
-# ✅✅✅ رفع باگ: همیشه migrate بزن، حتی اگر session_state از نسخه قدیمی باشد
 st.session_state.data = migrate_data(st.session_state.data)
 data = st.session_state.data
-
-# ✅ تضمین نهایی (defensive)
 data.setdefault("assets", [])
 data.setdefault("usd_rates", [])
 
@@ -445,8 +446,7 @@ elif selected == "journal":
             st.markdown("**📝 رکورد اولیه (اختیاری)**")
             c3, c4, c5 = st.columns([2, 2, 3])
             q0 = c3.number_input("تعداد اولیه", min_value=0.0, format="%.4f", step=1.0)
-            p0 = c4.number_input("قیمت واحد اولیه", min_value=0.0, format="%.2f", step=1000.0,
-                                 help=f"قیمت هر واحد به {currency_label(cur)}")
+            p0 = c4.number_input("قیمت واحد اولیه", min_value=0.0, format="%.2f", step=1000.0)
             note0 = c5.text_input("توضیح", placeholder="اختیاری")
             
             if st.form_submit_button("💾 ایجاد دارایی", use_container_width=True):
@@ -555,6 +555,51 @@ elif selected == "usd":
                     st.session_state.data = data
                     save_all(data)
                     st.rerun()
+                
+                # ✅ ویرایش نرخ دلار
+                vkey = f"v_rate_{r['id']}"
+                fk = f"edit_rate_{r['id']}_v{get_version(vkey)}"
+                with st.expander("✏️ ویرایش این نرخ"):
+                    with st.form(fk):
+                        ec1, ec2 = st.columns([2, 3])
+                        er_date = ec1.text_input(
+                            "تاریخ (شمسی)",
+                            value=r.get("created_at_jalali", today_jalali_str()),
+                        )
+                        er_rate = ec2.number_input(
+                            "نرخ (ریال)",
+                            value=int(r["rate"]),
+                            min_value=1,
+                            step=1000,
+                            format="%d",
+                        )
+                        er_note = st.text_input("توضیح", value=r.get("note", ""))
+                        if st.form_submit_button("💾 ذخیره تغییرات", use_container_width=True):
+                            jdate = parse_jalali(er_date)
+                            if jdate is None:
+                                st.error("تاریخ شمسی نامعتبر است. مثال: 1405/08/09")
+                            elif er_rate <= 0:
+                                st.error("نرخ باید بزرگتر از صفر باشد.")
+                            else:
+                                time_part = (
+                                    r["created_at"][11:16]
+                                    if len(r.get("created_at", "")) >= 16 else "00:00"
+                                )
+                                giso = jalali_to_gregorian_iso(jdate, time_part)
+                                for i, x in enumerate(data["usd_rates"]):
+                                    if x["id"] == r["id"]:
+                                        data["usd_rates"][i] = {
+                                            "id": r["id"],
+                                            "rate": er_rate,
+                                            "note": er_note.strip(),
+                                            "created_at": giso,
+                                            "created_at_jalali": jdate.strftime("%Y/%m/%d"),
+                                        }
+                                        break
+                                st.session_state.data = data
+                                bump_version(vkey)
+                                save_all(data)
+                                st.rerun()
 
 # ================== صفحه ۴: هر دارایی اختصاصی ==================
 elif selected.startswith("asset_"):
@@ -572,6 +617,34 @@ elif selected.startswith("asset_"):
             f"تاریخ ایجاد: {asset.get('created_at_jalali', '—')}"
         )
         
+        # ✅ تنظیمات دارایی (ویرایش نام و ارز)
+        avkey = f"v_asset_{asset['id']}"
+        afk = f"edit_asset_{asset['id']}_v{get_version(avkey)}"
+        with st.expander("⚙️ تنظیمات دارایی (ویرایش نام و ارز)"):
+            with st.form(afk):
+                ac1, ac2 = st.columns([3, 2])
+                new_name = ac1.text_input("نام دارایی", value=asset["name"])
+                new_cur = ac2.selectbox(
+                    "ارز قیمت‌گذاری",
+                    ["IRR", "USD"],
+                    index=0 if asset["currency"] == "IRR" else 1,
+                    format_func=lambda x: "ریال" if x == "IRR" else "دلار",
+                )
+                st.caption("⚠️ تغییر ارز باعث می‌شود رکوردهای قبلی با ارز جدید تفسیر شوند.")
+                if st.form_submit_button("💾 ذخیره تنظیمات", use_container_width=True):
+                    if not new_name.strip():
+                        st.error("نام دارایی را وارد کنید.")
+                    else:
+                        for i, a in enumerate(data["assets"]):
+                            if a["id"] == asset["id"]:
+                                data["assets"][i]["name"] = new_name.strip()
+                                data["assets"][i]["currency"] = new_cur
+                                break
+                        st.session_state.data = data
+                        bump_version(avkey)
+                        save_all(data)
+                        st.rerun()
+        
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("📦 آخرین تعداد", fmt_num(rec["quantity"]) if rec else "—")
         c2.metric("💲 آخرین قیمت واحد",
@@ -583,6 +656,7 @@ elif selected.startswith("asset_"):
         else:
             c4.metric("💵 معادل دلاری", "—", help="نرخ دلار ثبت نشده")
         
+        # --- فرم ثبت رکورد روزانه ---
         with st.container(border=True):
             st.subheader("➕ ثبت رکورد روزانه")
             st.caption("قیمت و تعداد هر روز را اینجا ثبت کنید. تاریخ شمسی (YYYY/MM/DD).")
@@ -618,6 +692,7 @@ elif selected.startswith("asset_"):
                         save_all(data)
                         st.rerun()
         
+        # --- نمودار روند ---
         records = sorted(asset.get("records", []), key=lambda r: r.get("date_gregorian", ""))
         if len(records) >= 2:
             st.subheader("📈 روند ارزش دارایی")
@@ -633,6 +708,7 @@ elif selected.startswith("asset_"):
                              margin=dict(t=20, b=20))
             st.plotly_chart(fig, use_container_width=True)
         
+        # --- تاریخچه رکوردها با ویرایش ---
         st.subheader("📋 تاریخچه رکوردها")
         if not records:
             st.info("هنوز رکوردی ثبت نشده. اولین رکورد را از فرم بالا اضافه کنید.")
@@ -642,7 +718,7 @@ elif selected.startswith("asset_"):
                     c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 3, 3, 2, 1])
                     c1.markdown(f"**📅 {r['date_jalali']}**")
                     c2.caption(f"تعداد: {fmt_num(r['quantity'])}")
-                    c3.caption(f"قیمت واحد: {fmt_num(r['unit_price'])} {currency_label(asset['currency'])}")
+                    c3.caption(f"قیمت: {fmt_num(r['unit_price'])} {currency_label(asset['currency'])}")
                     val = r['quantity'] * r['unit_price']
                     c4.markdown(f"**{fmt_num(val)} {currency_label(asset['currency'])}**")
                     c5.caption(r.get("note", "—") or "—")
@@ -651,7 +727,55 @@ elif selected.startswith("asset_"):
                         st.session_state.data = data
                         save_all(data)
                         st.rerun()
+                    
+                    # ✅ ویرایش رکورد
+                    rvkey = f"v_rec_{r['id']}"
+                    rfk = f"edit_rec_{r['id']}_v{get_version(rvkey)}"
+                    with st.expander("✏️ ویرایش این رکورد"):
+                        with st.form(rfk):
+                            ec1, ec2, ec3 = st.columns([2, 2, 2])
+                            ed_date = ec1.text_input("تاریخ (شمسی)", value=r["date_jalali"])
+                            ed_qty = ec2.number_input(
+                                "تعداد", value=float(r["quantity"]),
+                                min_value=0.0, format="%.4f", step=1.0,
+                            )
+                            ed_price = ec3.number_input(
+                                f"قیمت واحد ({currency_label(asset['currency'])})",
+                                value=float(r["unit_price"]),
+                                min_value=0.0, format="%.2f", step=1000.0,
+                            )
+                            ed_note = st.text_input("توضیح", value=r.get("note", ""))
+                            if st.form_submit_button("💾 ذخیره تغییرات", use_container_width=True):
+                                jdate = parse_jalali(ed_date)
+                                if jdate is None:
+                                    st.error("تاریخ شمسی نامعتبر است. مثال: 1405/08/09")
+                                elif ed_qty <= 0:
+                                    st.error("تعداد باید بزرگتر از صفر باشد.")
+                                elif ed_price <= 0:
+                                    st.error("قیمت واحد باید بزرگتر از صفر باشد.")
+                                else:
+                                    time_part = (
+                                        r["date_gregorian"][11:16]
+                                        if len(r.get("date_gregorian", "")) >= 16 else "00:00"
+                                    )
+                                    giso = jalali_to_gregorian_iso(jdate, time_part)
+                                    for i, x in enumerate(asset["records"]):
+                                        if x["id"] == r["id"]:
+                                            asset["records"][i] = {
+                                                "id": r["id"],
+                                                "date_gregorian": giso,
+                                                "date_jalali": jdate.strftime("%Y/%m/%d"),
+                                                "quantity": ed_qty,
+                                                "unit_price": ed_price,
+                                                "note": ed_note.strip(),
+                                            }
+                                            break
+                                    st.session_state.data = data
+                                    bump_version(rvkey)
+                                    save_all(data)
+                                    st.rerun()
         
+        # --- حذف کل دارایی ---
         st.divider()
         with st.expander("⚠️ حذف کل دارایی"):
             confirm = st.checkbox(
