@@ -15,7 +15,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ================== مسیر فایل محلی ==================
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
 
 # ================== توابع تاریخ ==================
@@ -33,7 +32,6 @@ def iso_to_jalali(iso_str, with_time=True):
         return "—"
 
 def parse_jalali(s):
-    """'1405/08/09' → jdatetime.date یا None"""
     try:
         s = s.strip().replace("-", "/").replace(".", "/")
         parts = s.split("/")
@@ -51,9 +49,7 @@ def jalali_to_gregorian_iso(jdate, time_str="00:00"):
 def fmt_num(x):
     try:
         f = float(x)
-        if f == int(f):
-            return f"{int(f):,}"
-        return f"{f:,.2f}"
+        return f"{int(f):,}" if f == int(f) else f"{f:,.2f}"
     except Exception:
         return str(x)
 
@@ -86,7 +82,6 @@ st.markdown("""
     section[data-testid="stSidebar"] div[data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-child {
         display: flex !important;
     }
-    /* نوار ناوبری بالا */
     [data-testid="stMainBlockContainer"] div[data-testid="stRadio"] > div[role="radiogroup"] {
         flex-direction: row !important; flex-wrap: wrap !important; gap: 0.25rem !important;
         border-bottom: 1px solid #e5e7eb !important; margin-bottom: 1.5rem !important;
@@ -176,26 +171,31 @@ def save_github_file(data):
     except Exception:
         return False
 
-# ================== مهاجرت داده ==================
+# ================== مهاجرت داده (idempotent) ==================
 def migrate_data(data):
-    """مهاجرت هر ساختار قدیمی به ساختار assets"""
+    """هر ساختار قدیمی را به ساختار assets تبدیل می‌کند. بی‌خطر و idempotent است."""
+    if not isinstance(data, dict):
+        return {"assets": [], "usd_rates": []}
     if not data:
         return {"assets": [], "usd_rates": []}
     
-    if "usd_rates" not in data:
+    # usd_rate قدیمی → usd_rates
+    if "usd_rates" not in data or not isinstance(data.get("usd_rates"), list):
+        old_rate = data.get("usd_rate")
         data["usd_rates"] = []
-        if data.get("usd_rate"):
+        if old_rate:
             data["usd_rates"].append({
                 "id": datetime.now().isoformat(),
-                "rate": data["usd_rate"],
+                "rate": old_rate,
                 "note": "منتقل‌شده از نسخه قدیمی",
                 "created_at": datetime.now().isoformat(),
                 "created_at_jalali": today_jalali_str(),
             })
         data.pop("usd_rate", None)
     
-    if "journals" in data:
-        if "assets" not in data:
+    # journals قدیمی → assets
+    if "journals" in data and isinstance(data.get("journals"), list):
+        if "assets" not in data or not isinstance(data.get("assets"), list):
             data["assets"] = []
         for j in data.get("journals", []):
             asset_id = j.get("id") or datetime.now().isoformat()
@@ -219,8 +219,12 @@ def migrate_data(data):
             })
         data.pop("journals", None)
     
-    if "assets" not in data:
+    # تضمین نهایی
+    if "assets" not in data or not isinstance(data.get("assets"), list):
         data["assets"] = []
+    if "usd_rates" not in data or not isinstance(data.get("usd_rates"), list):
+        data["usd_rates"] = []
+    
     return data
 
 def load_all():
@@ -272,10 +276,17 @@ def compute_asset_value(asset, usd_rate):
 def currency_label(cur):
     return "ریال" if cur == "IRR" else "دلار"
 
-# ================== مقداردهی ==================
+# ================== مقداردهی (با رفع باگ KeyError) ==================
 if "data" not in st.session_state:
     st.session_state.data = load_all()
+
+# ✅✅✅ رفع باگ: همیشه migrate بزن، حتی اگر session_state از نسخه قدیمی باشد
+st.session_state.data = migrate_data(st.session_state.data)
 data = st.session_state.data
+
+# ✅ تضمین نهایی (defensive)
+data.setdefault("assets", [])
+data.setdefault("usd_rates", [])
 
 # ================== سایدبار ==================
 with st.sidebar:
@@ -329,7 +340,7 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"فایل معتبر نیست: {e}")
 
-# ================== ساخت نوار ناوبری ==================
+# ================== نوار ناوبری ==================
 nav_options = ["overview", "journal", "usd"]
 for a in data.get("assets", []):
     nav_options.append(f"asset_{a['id']}")
@@ -342,12 +353,10 @@ nav_labels = {
 for a in data.get("assets", []):
     nav_labels[f"asset_{a['id']}"] = f"📁 {a['name']}"
 
-# ✅ مدیریت ناوبری برنامه‌ریزی‌شده (قبل از رندر رادیو)
 if "pending_nav" in st.session_state:
     st.session_state.nav_tab = st.session_state.pending_nav
     del st.session_state.pending_nav
 
-# ✅ ایمنی: اگر تب فعلی دیگر وجود ندارد
 if "nav_tab" not in st.session_state or st.session_state.nav_tab not in nav_options:
     st.session_state.nav_tab = "overview"
 
@@ -455,7 +464,7 @@ elif selected == "journal":
                             "unit_price": p0,
                             "note": note0.strip() or "رکورد اولیه",
                         })
-                    data["assets"].append({
+                    data.setdefault("assets", []).append({
                         "id": asset_id,
                         "name": name.strip(),
                         "currency": cur,
@@ -563,7 +572,6 @@ elif selected.startswith("asset_"):
             f"تاریخ ایجاد: {asset.get('created_at_jalali', '—')}"
         )
         
-        # --- کارت‌های وضعیت ---
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("📦 آخرین تعداد", fmt_num(rec["quantity"]) if rec else "—")
         c2.metric("💲 آخرین قیمت واحد",
@@ -575,10 +583,9 @@ elif selected.startswith("asset_"):
         else:
             c4.metric("💵 معادل دلاری", "—", help="نرخ دلار ثبت نشده")
         
-        # --- فرم ثبت رکورد روزانه ---
         with st.container(border=True):
             st.subheader("➕ ثبت رکورد روزانه")
-            st.caption("قیمت و تعداد هر روز را اینجا ثبت کنید. با فرمت تاریخ شمسی (YYYY/MM/DD).")
+            st.caption("قیمت و تعداد هر روز را اینجا ثبت کنید. تاریخ شمسی (YYYY/MM/DD).")
             with st.form(f"add_record_{asset['id']}", clear_on_submit=True):
                 c1, c2, c3, c4 = st.columns([2, 2, 2, 3])
                 date_text = c1.text_input("تاریخ (شمسی)", value=today_jalali_str(),
@@ -611,7 +618,6 @@ elif selected.startswith("asset_"):
                         save_all(data)
                         st.rerun()
         
-        # --- نمودار روند ---
         records = sorted(asset.get("records", []), key=lambda r: r.get("date_gregorian", ""))
         if len(records) >= 2:
             st.subheader("📈 روند ارزش دارایی")
@@ -627,7 +633,6 @@ elif selected.startswith("asset_"):
                              margin=dict(t=20, b=20))
             st.plotly_chart(fig, use_container_width=True)
         
-        # --- تاریخچه رکوردها ---
         st.subheader("📋 تاریخچه رکوردها")
         if not records:
             st.info("هنوز رکوردی ثبت نشده. اولین رکورد را از فرم بالا اضافه کنید.")
@@ -647,7 +652,6 @@ elif selected.startswith("asset_"):
                         save_all(data)
                         st.rerun()
         
-        # --- حذف کل دارایی ---
         st.divider()
         with st.expander("⚠️ حذف کل دارایی"):
             confirm = st.checkbox(
