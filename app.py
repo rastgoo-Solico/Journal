@@ -97,65 +97,26 @@ st.markdown("""
         font-size: 1.3rem !important; white-space: normal !important;
         overflow: visible !important; word-break: break-word !important;
     }
-    section[data-testid="stSidebar"] div[data-testid="stRadio"] > div[role="radiogroup"] {
-        flex-direction: column !important; border: none !important; gap: 0.4rem !important;
-    }
-    section[data-testid="stSidebar"] div[data-testid="stRadio"] > div[role="radiogroup"] > label {
-        padding: 0.4rem 0 !important; border-bottom: none !important; border-radius: 0 !important;
-    }
-    section[data-testid="stSidebar"] div[data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-child {
-        display: flex !important;
-    }
-
-    [data-testid="stMainBlockContainer"] div[data-testid="stRadio"] > div[role="radiogroup"] {
-        flex-direction: row !important; flex-wrap: wrap !important; gap: 0.25rem !important;
-        border-bottom: 1px solid #e5e7eb !important; margin-bottom: 1.5rem !important;
-        padding: 0 !important; justify-content: flex-start !important;
-    }
-    [data-testid="stMainBlockContainer"] div[data-testid="stRadio"] > div[role="radiogroup"] > label {
-        padding: 0.7rem 1.2rem !important; margin: 0 !important; cursor: pointer !important;
-        border-bottom: 3px solid transparent !important; border-radius: 0 !important;
-        transition: all 0.15s ease !important;
-    }
-    [data-testid="stMainBlockContainer"] div[data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
-        background: #f3f4f6 !important;
-    }
-    [data-testid="stMainBlockContainer"] div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) {
-        border-bottom-color: #3b82f6 !important; color: #1d4ed8 !important; font-weight: 600 !important;
-    }
-    [data-testid="stMainBlockContainer"] div[data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-child {
-        display: none !important;
-    }
-
     section[data-testid="stSidebar"] [data-testid="stDownloadButton"] button { width: 100% !important; }
 
+    /* ============ موبایل ============ */
     @media (max-width: 768px) {
         .block-container {
             padding-top: 4rem !important;
-            padding-left: 0.75rem !important;
-            padding-right: 0.75rem !important;
+            padding-left: 0.6rem !important;
+            padding-right: 0.6rem !important;
             padding-bottom: 2rem !important;
         }
-        h1 { font-size: 1.4rem !important; }
-        h2 { font-size: 1.15rem !important; }
-        h3 { font-size: 1rem !important; }
-        h4 { font-size: 0.95rem !important; }
+        h1 { font-size: 1.35rem !important; }
+        h2 { font-size: 1.1rem !important; }
+        h3 { font-size: 0.98rem !important; }
+        h4 { font-size: 0.92rem !important; }
+
         [data-testid="stMetricValue"] { font-size: 1.05rem !important; }
         [data-testid="stMetricLabel"] { font-size: 0.78rem !important; }
+        [data-testid="stMetricDelta"] { font-size: 0.72rem !important; }
 
-        [data-testid="stMainBlockContainer"] div[data-testid="stRadio"] > div[role="radiogroup"] {
-            flex-wrap: nowrap !important;
-            overflow-x: auto !important;
-            -webkit-overflow-scrolling: touch !important;
-            scrollbar-width: thin !important;
-        }
-        [data-testid="stMainBlockContainer"] div[data-testid="stRadio"] > div[role="radiogroup"] > label {
-            padding: 0.55rem 0.75rem !important;
-            font-size: 0.82rem !important;
-            white-space: nowrap !important;
-            flex-shrink: 0 !important;
-        }
-
+        /* ستون‌ها: روی موبایل زیر هم */
         [data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
         [data-testid="stHorizontalBlock"] > [data-testid="column"] {
             flex: 1 1 100% !important;
@@ -163,12 +124,21 @@ st.markdown("""
             width: 100% !important;
         }
 
+        /* نوار پیل‌ها: اسکرول افقی نرم */
+        [data-testid="stPills"] { width: 100% !important; }
+
+        /* جداول */
         [data-testid="stDataFrame"] { font-size: 0.8rem !important; }
+
+        /* سایدبار (وقتی باز است) */
         section[data-testid="stSidebar"] { font-size: 0.9rem; }
+
+        /* دکمه‌ها تمام عرض */
+        [data-testid="stMainBlockContainer"] .stButton > button { width: 100% !important; }
     }
 
     @media (max-width: 400px) {
-        .block-container { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+        .block-container { padding-left: 0.4rem !important; padding-right: 0.4rem !important; }
         h1 { font-size: 1.2rem !important; }
         [data-testid="stMetricValue"] { font-size: 0.95rem !important; }
     }
@@ -380,6 +350,70 @@ def get_version(key):
 def bump_version(key):
     st.session_state[key] = st.session_state.get(key, 0) + 1
 
+# ================== ✅ تایم‌لاین رشد دارایی ==================
+def build_portfolio_timeline(data):
+    """برای هر تاریخ متمایز، ارزش کل دارایی را به ریال و دلار محاسبه می‌کند.
+    برای هر دارایی، آخرین رکورد ≤ آن تاریخ انتخاب می‌شود.
+    برای نرخ دلار، آخرین نرخ ≤ آن تاریخ استفاده می‌شود.
+    """
+    assets = data.get("assets", [])
+    usd_rates = sorted(data.get("usd_rates", []), key=lambda x: x.get("created_at", ""))
+
+    all_dates = set()
+    for a in assets:
+        for r in a.get("records", []):
+            if r.get("date_gregorian"):
+                all_dates.add(r["date_gregorian"][:10])
+    for r in usd_rates:
+        if r.get("created_at"):
+            all_dates.add(r["created_at"][:10])
+
+    if not all_dates:
+        return pd.DataFrame()
+
+    sorted_dates = sorted(all_dates)
+    rows = []
+    for d in sorted_dates:
+        rate_at_date = None
+        for ur in usd_rates:
+            if ur.get("created_at", "")[:10] <= d:
+                rate_at_date = ur["rate"]
+            else:
+                break
+
+        total_irr = 0.0
+        total_usd = 0.0
+        for a in assets:
+            recs = [r for r in a.get("records", [])
+                    if r.get("date_gregorian", "")[:10] <= d]
+            if not recs:
+                continue
+            latest = max(recs, key=lambda r: r.get("date_gregorian", ""))
+            val = latest["quantity"] * latest["unit_price"]
+            if a["currency"] == "IRR":
+                total_irr += val
+                if rate_at_date and rate_at_date > 0:
+                    total_usd += val / rate_at_date
+            else:
+                total_usd += val
+                if rate_at_date and rate_at_date > 0:
+                    total_irr += val * rate_at_date
+
+        try:
+            dt = datetime.fromisoformat(d + "T00:00:00")
+            jd = jdatetime.datetime.fromgregorian(datetime=dt).strftime("%Y/%m/%d")
+        except Exception:
+            jd = d
+
+        rows.append({
+            "date_gregorian": d,
+            "date_jalali": jd,
+            "total_irr": total_irr,
+            "total_usd": total_usd,
+        })
+
+    return pd.DataFrame(rows)
+
 # ================== مقداردهی ==================
 if "data" not in st.session_state:
     st.session_state.data = load_all()
@@ -416,7 +450,6 @@ with st.sidebar:
 
     st.divider()
 
-    # ✅ وضعیت ذخیره‌سازی با تشخیص دقیق
     st.markdown("**💾 وضعیت ذخیره‌سازی**")
     local_ok = os.path.exists(DATA_FILE)
     gh_status, gh_message = check_github_status(GITHUB_TOKEN, GITHUB_REPO)
@@ -427,12 +460,8 @@ with st.sidebar:
 
     if gh_status != "ok":
         st.warning(f"GitHub: {gh_message}", icon="⚠️")
-
-        # ✅✅✅ راهنمای GitHub — بدون code fence داخل رشته ✅✅✅
         with st.expander("🔧 چطور GitHub را تنظیم کنم؟", expanded=False):
-            st.markdown(
-                "**اگر روی Streamlit Community Cloud هستید (ضروری):**"
-            )
+            st.markdown("**اگر روی Streamlit Community Cloud هستید (ضروری):**")
             st.caption(
                 "داده‌های فایل محلی با هر بار ری‌استارت کانتینر پاک می‌شوند. "
                 "برای ماندگاری دائمی این کارها را انجام دهید:"
@@ -456,10 +485,7 @@ with st.sidebar:
                 "پوشه `.streamlit/secrets.toml` را کنار `app.py` بسازید "
                 "و همان دو خط بالا را در آن بریزید."
             )
-            st.caption(
-                "**توجه:** نام مخزن باید دقیقاً به شکل "
-                "`username/repo-name` باشد."
-            )
+            st.caption("**توجه:** نام مخزن باید دقیقاً به شکل `username/repo-name` باشد.")
     else:
         st.caption(f"✅ {gh_message}")
 
@@ -485,7 +511,7 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"فایل معتبر نیست: {e}")
 
-# ================== نوار ناوبری ==================
+# ================== ناوبری با st.pills (بومی و ریسپانسیو) ==================
 nav_options = ["overview", "journal", "usd"]
 for a in data.get("assets", []):
     nav_options.append(f"asset_{a['id']}")
@@ -498,6 +524,7 @@ nav_labels = {
 for a in data.get("assets", []):
     nav_labels[f"asset_{a['id']}"] = f"{asset_icon(a)} {a['name']}"
 
+# انتقال ناوبری برنامه‌ریزی‌شده
 if "pending_nav" in st.session_state:
     st.session_state.nav_tab = st.session_state.pending_nav
     del st.session_state.pending_nav
@@ -505,14 +532,27 @@ if "pending_nav" in st.session_state:
 if "nav_tab" not in st.session_state or st.session_state.nav_tab not in nav_options:
     st.session_state.nav_tab = "overview"
 
-selected = st.radio(
-    "ناوبری",
-    options=nav_options,
-    format_func=lambda x: nav_labels.get(x, x),
-    horizontal=True,
-    label_visibility="collapsed",
-    key="nav_tab",
-)
+# انتخاب تب — pills در Streamlit 1.40+، fallback به radio
+if hasattr(st, "pills"):
+    selected = st.pills(
+        "ناوبری",
+        options=nav_options,
+        format_func=lambda x: nav_labels.get(x, x),
+        selection_mode="single",
+        label_visibility="collapsed",
+        key="nav_tab",
+    )
+    if selected is None:
+        selected = "overview"
+else:
+    selected = st.radio(
+        "ناوبری",
+        options=nav_options,
+        format_func=lambda x: nav_labels.get(x, x),
+        horizontal=True,
+        label_visibility="collapsed",
+        key="nav_tab",
+    )
 
 # ================== صفحه ۱: نمای کلی ==================
 if selected == "overview":
@@ -561,6 +601,80 @@ if selected == "overview":
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("برای نمایش پای‌چارت، ابتدا نرخ دلار را ثبت کنید.")
+
+        # ✅✅✅ نمودار روند رشد دارایی ==================
+        st.subheader("📈 روند رشد ارزش کل دارایی")
+        timeline = build_portfolio_timeline(data)
+        if len(timeline) >= 2:
+            # ---- نمودار به دلار ----
+            fig_usd = px.line(
+                timeline, x="date_jalali", y="total_usd", markers=True,
+                labels={"date_jalali": "تاریخ", "total_usd": "ارزش (دلار)"},
+                color_discrete_sequence=["#3b82f6"],
+            )
+            fig_usd.update_traces(
+                hovertemplate="تاریخ: %{x}<br>ارزش: $%{y:,.2f}<extra></extra>",
+                line=dict(width=3), marker=dict(size=7),
+            )
+            fig_usd.update_layout(
+                font=dict(family="Vazirmatn, B Nazanin, Tahoma", size=13),
+                yaxis=dict(tickformat=",.0f", title="ارزش (دلار)"),
+                xaxis=dict(title="تاریخ"),
+                margin=dict(t=30, b=20, l=10, r=10),
+                hovermode="x unified",
+                title=dict(text="💵 ارزش کل دارایی به دلار", font=dict(size=14)),
+            )
+            st.plotly_chart(fig_usd, use_container_width=True)
+
+            # ---- نمودار به ریال ----
+            fig_irr = px.line(
+                timeline, x="date_jalali", y="total_irr", markers=True,
+                labels={"date_jalali": "تاریخ", "total_irr": "ارزش (ریال)"},
+                color_discrete_sequence=["#10b981"],
+            )
+            fig_irr.update_traces(
+                hovertemplate="تاریخ: %{x}<br>ارزش: %{y:,.0f} ریال<extra></extra>",
+                line=dict(width=3), marker=dict(size=7),
+            )
+            fig_irr.update_layout(
+                font=dict(family="Vazirmatn, B Nazanin, Tahoma", size=13),
+                yaxis=dict(tickformat=",.0f", title="ارزش (ریال)"),
+                xaxis=dict(title="تاریخ"),
+                margin=dict(t=30, b=20, l=10, r=10),
+                hovermode="x unified",
+                title=dict(text="🇮🇷 ارزش کل دارایی به ریال", font=dict(size=14)),
+            )
+            st.plotly_chart(fig_irr, use_container_width=True)
+
+            # ---- خلاصه رشد ----
+            if len(timeline) >= 2:
+                first_usd = timeline["total_usd"].iloc[0]
+                last_usd = timeline["total_usd"].iloc[-1]
+                first_irr = timeline["total_irr"].iloc[0]
+                last_irr = timeline["total_irr"].iloc[-1]
+                d_usd = last_usd - first_usd
+                d_irr = last_irr - first_irr
+                pct_usd = ((last_usd / first_usd - 1) * 100) if first_usd else 0
+                pct_irr = ((last_irr / first_irr - 1) * 100) if first_irr else 0
+
+                g1, g2 = st.columns(2)
+                g1.metric(
+                    "تغییر ارزش (دلاری)",
+                    f"${last_usd:,.2f}",
+                    delta=f"{d_usd:+,.2f} ({pct_usd:+.1f}%)",
+                )
+                g2.metric(
+                    "تغییر ارزش (ریالی)",
+                    f"{last_irr:,.0f} ریال",
+                    delta=f"{d_irr:+,.0f} ({pct_irr:+.1f}%)",
+                )
+        elif len(timeline) == 1:
+            st.info(
+                "📊 برای نمایش نمودار روند، حداقل دو رکورد در تاریخ‌های مختلف "
+                "لازم است. الان فقط یک تاریخ ثبت شده."
+            )
+        else:
+            st.info("📊 هنوز رکوردی ثبت نشده تا نمودار روند نمایش داده شود.")
 
         st.subheader("📋 جدول دارایی‌ها")
         disp = df.copy()
