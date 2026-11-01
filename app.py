@@ -441,6 +441,52 @@ def render_html_table(df, dark=False):
     html += '</tbody></table></div>'
     st.markdown(html, unsafe_allow_html=True)
 
+# ================== گرید آیکون و ایموجی ==================
+def _icon_grid_picker(prefix, current, on_save):
+    icons = load_fa_icons()
+    s = st.text_input("🔍", key=f"{prefix}_search", placeholder="جستجوی آیکون (مثلاً: coins, chart)...", label_visibility="collapsed")
+    if s:
+        q = s.lower()
+        icons = [i for i in icons if q in i["label"].lower() or q in i["class"].lower()]
+    display = icons[:120]
+    st.caption(f"**{len(icons)}** یافت شد — نمایش {len(display)}")
+    for row in range(0, len(display), 8):
+        cols = st.columns(8)
+        for j, ic in enumerate(display[row:row + 8]):
+            with cols[j]:
+                em = icon_emoji(ic["class"])
+                label = em if em != "📁" else ic["class"].replace("fa-", "")[:5]
+                is_current = (ic["class"] == current)
+                btn_label = f"{'✅ ' if is_current else ''}{label}"
+                if st.button(btn_label, key=f"{prefix}_btn_{ic['class']}", help=ic["class"], use_container_width=True):
+                    on_save(ic["class"])
+                    st.rerun()
+
+def _emoji_grid_picker(prefix, current, on_save):
+    EMOJIS = ["📁", "🪙", "💎", "👑", "💰", "💵", "💴", "💶", "💷", "🏦",
+              "🏠", "🏢", "🚗", "🚚", "📈", "📊", "📉", "⚡", "🔥", "💧",
+              "🌾", "🏭", "🎁", "🥇", "🥈", "🥉", "🌱", "💼", "🏪", "🧾",
+              "🏷️", "⚖️", "🛡️", "⛽", "🔐", "👛", "💲", "₿", "Ξ", "📦",
+              "🎯", "🎨", "🌍", "⭐", "❤️", "💡", "🔑", "🎓", "🎵", "🎮"]
+    for row in range(0, len(EMOJIS), 10):
+        cols = st.columns(10)
+        for j, em in enumerate(EMOJIS[row:row + 10]):
+            with cols[j]:
+                is_current = (em == current)
+                btn_label = f"{'✅' if is_current else ''}{em}"
+                if st.button(btn_label, key=f"{prefix}_em_{row + j}", use_container_width=True):
+                    on_save(em)
+                    st.rerun()
+    st.divider()
+    c1, c2 = st.columns([3, 1])
+    custom = c1.text_input("یا ایموجی دلخواه", value=current or "", max_chars=8, key=f"{prefix}_custom", placeholder="مثلاً: 🥇")
+    if c2.button("💾 ذخیره", key=f"{prefix}_save_custom", use_container_width=True):
+        on_save(custom.strip()[:8])
+        st.rerun()
+    if st.button("🔄 خودکار (خالی کردن)", key=f"{prefix}_clear", use_container_width=True):
+        on_save("")
+        st.rerun()
+
 # ================== مقداردهی + اعمال استایل ==================
 if "data" not in st.session_state:
     st.session_state.data = load_all()
@@ -451,6 +497,7 @@ data.setdefault("usd_rates", [])
 
 inject_app(data)
 _dark = get_settings(data)["dark_mode"]
+assets = data.get("assets", [])
 
 # ================== سایدبار ==================
 with st.sidebar:
@@ -521,8 +568,7 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"فایل معتبر نیست: {e}")
 
-# ================== ✅ ناوبری با نسخه‌بندی (رفع خطای StreamlitWidgetAlreadyInstantiatedError) ==================
-assets = data.get("assets", [])
+# ================== ناوبری با نسخه‌بندی ==================
 nav_options = ["overview", "journal", "usd"] + [f"asset_{a['id']}" for a in assets] + ["settings"]
 
 nav_labels = {
@@ -534,11 +580,9 @@ nav_labels = {
 for a in assets:
     nav_labels[f"asset_{a['id']}"] = f"{asset_overview_emoji(a)} {a['name']}"
 
-# نسخه شمار برای ویجت ناوبری
 if "nav_version" not in st.session_state:
     st.session_state.nav_version = 0
 
-# pending_nav → نسخه جدید بساز تا ویجت با کلید تازه بازسازی شود
 if "pending_nav" in st.session_state:
     pending = st.session_state.pending_nav
     del st.session_state.pending_nav
@@ -674,65 +718,61 @@ def render_settings_page(data):
                         st.rerun()
 
     with t_nav:
-        st.subheader("آیکون و رنگ منو")
-        all_icons = load_fa_icons()
-        all_classes = [ic["class"] for ic in all_icons]
-        labels_map = {ic["class"]: f'{ic["label"]} ({ic["class"]})' for ic in all_icons}
-        st.caption("⚠️ آیکون‌های FA در هدرها و کارت‌ها نمایش داده می‌شوند. در نوار ناوبری بالای صفحه از ایموجی استفاده می‌شود.")
+        st.subheader("🎨 آیکون و رنگ منو")
+        st.caption("روی هر آیکون کلیک کنید تا انتخاب شود. ✅ = آیکون فعلی")
         for nav_key in ["overview", "journal", "usd", "settings"]:
             cfg = settings["nav_icons"].get(nav_key, DEFAULT_NAV_ICONS[nav_key])
             with st.container(border=True):
-                c1, c2, c3, c4 = st.columns([1, 2, 3, 2])
-                c1.markdown(f'<div style="text-align:center; padding:10px;"><i class="fa-solid {cfg["icon"]}" style="color:{cfg["color"]}; font-size:2.2rem;"></i></div>', unsafe_allow_html=True)
-                c2.markdown(f"**{NAV_LABELS[nav_key]}**")
-                search_n = c3.text_input("جستجو", key=f"search_nav_{nav_key}", placeholder="جستجو...", label_visibility="collapsed")
-                if search_n:
-                    q = search_n.lower()
-                    filtered = [c for c in all_classes if q in c.lower() or q in labels_map.get(c, "").lower()][:200]
-                else:
-                    filtered = all_classes[:200]
-                if cfg["icon"] not in filtered:
-                    filtered = [cfg["icon"]] + filtered
-                idx = filtered.index(cfg["icon"]) if cfg["icon"] in filtered else 0
-                new_icon = c3.selectbox("آیکون", filtered, index=idx, format_func=lambda c: labels_map.get(c, c),
-                                       key=f"pick_nav_{nav_key}", label_visibility="collapsed")
-                new_color = c4.color_picker("رنگ", value=cfg["color"], key=f"color_nav_{nav_key}")
-                if st.button("💾 ذخیره", key=f"save_nav_{nav_key}", use_container_width=True):
-                    data["settings"]["nav_icons"][nav_key] = {"icon": new_icon, "color": new_color}
+                c1, c2 = st.columns([1, 4])
+                with c1:
+                    st.markdown(f'<div style="text-align:center; padding:10px;"><i class="fa-solid {cfg["icon"]}" style="color:{cfg["color"]}; font-size:2.5rem;"></i></div>', unsafe_allow_html=True)
+                with c2:
+                    st.markdown(f"**{NAV_LABELS[nav_key]}** — `{cfg['icon']}`")
+                    new_color = st.color_picker("رنگ", value=cfg["color"], key=f"color_nav_{nav_key}")
+
+                with st.expander("🖼️ انتخاب آیکون از گرید", expanded=False):
+                    def _save_nav(icon_class, _k=nav_key):
+                        current_color = data["settings"]["nav_icons"].get(_k, DEFAULT_NAV_ICONS[_k])["color"]
+                        data["settings"]["nav_icons"][_k] = {"icon": icon_class, "color": current_color}
+                        st.session_state.data = data
+                        save_all(data)
+                    _icon_grid_picker(f"nav_{nav_key}", cfg["icon"], _save_nav)
+
+                if st.button("💾 ذخیره رنگ", key=f"save_nav_{nav_key}", use_container_width=True):
+                    data["settings"]["nav_icons"][nav_key] = {"icon": cfg["icon"], "color": new_color}
                     st.session_state.data = data
                     save_all(data)
                     st.rerun()
 
     with t_assets:
-        st.subheader("آیکون و رنگ دارایی‌ها")
+        st.subheader("📦 آیکون و رنگ دارایی‌ها")
+        st.caption("روی هر آیکون کلیک کنید تا انتخاب شود. ✅ = آیکون فعلی")
         if not assets:
             st.info("هنوز دارایی‌ای ثبت نشده.")
         else:
-            all_icons = load_fa_icons()
-            all_classes = [ic["class"] for ic in all_icons]
-            labels_map = {ic["class"]: f'{ic["label"]} ({ic["class"]})' for ic in all_icons}
             for a in assets:
                 cur_ic, cur_col = asset_icon(a), asset_color(a)
                 with st.container(border=True):
-                    c1, c2, c3, c4 = st.columns([1, 2, 3, 2])
-                    c1.markdown(f'<div style="text-align:center; padding:10px;"><i class="fa-solid {cur_ic}" style="color:{cur_col}; font-size:2.2rem;"></i></div>', unsafe_allow_html=True)
-                    c2.markdown(f"**{a['name']}**")
-                    search_a = c3.text_input("جستجو", key=f"search_asset_{a['id']}", placeholder="جستجو...", label_visibility="collapsed")
-                    if search_a:
-                        q = search_a.lower()
-                        filtered = [c for c in all_classes if q in c.lower() or q in labels_map.get(c, "").lower()][:200]
-                    else:
-                        filtered = all_classes[:200]
-                    if cur_ic not in filtered:
-                        filtered = [cur_ic] + filtered
-                    idx = filtered.index(cur_ic) if cur_ic in filtered else 0
-                    new_icon = c3.selectbox("آیکون", filtered, index=idx, format_func=lambda c: labels_map.get(c, c),
-                                           key=f"pick_asset_{a['id']}", label_visibility="collapsed")
-                    new_color = c4.color_picker("رنگ", value=cur_col, key=f"color_asset_{a['id']}")
-                    if st.button("💾 ذخیره", key=f"save_asset_{a['id']}", use_container_width=True):
+                    c1, c2 = st.columns([1, 4])
+                    with c1:
+                        st.markdown(f'<div style="text-align:center; padding:10px;"><i class="fa-solid {cur_ic}" style="color:{cur_col}; font-size:2.5rem;"></i></div>', unsafe_allow_html=True)
+                    with c2:
+                        st.markdown(f"**{a['name']}** — `{cur_ic}`")
+                        new_color = st.color_picker("رنگ", value=cur_col, key=f"color_asset_{a['id']}")
+
+                    with st.expander("🖼️ انتخاب آیکون از گرید", expanded=False):
+                        def _save_asset(icon_class, _id=a["id"]):
+                            for i, x in enumerate(data["assets"]):
+                                if x["id"] == _id:
+                                    data["assets"][i]["icon"] = icon_class
+                                    break
+                            st.session_state.data = data
+                            save_all(data)
+                        _icon_grid_picker(f"asset_{a['id']}", cur_ic, _save_asset)
+
+                    if st.button("💾 ذخیره رنگ", key=f"save_asset_{a['id']}", use_container_width=True):
                         for i, x in enumerate(data["assets"]):
                             if x["id"] == a["id"]:
-                                data["assets"][i]["icon"] = new_icon
                                 data["assets"][i]["color"] = new_color
                                 break
                         st.session_state.data = data
@@ -740,37 +780,34 @@ def render_settings_page(data):
                         st.rerun()
 
     with t_emoji:
-        st.subheader("😀 ایموجی‌های نمایش در نمای کلی")
-        st.caption("این ایموجی‌ها در نوار ناوبری بالا، پای‌چارت و جدول استفاده می‌شوند.")
+        st.subheader("😀 ایموجی نمایش در نمای کلی")
+        st.caption("روی ایموجی کلیک کنید تا انتخاب شود. ✅ = انتخاب فعلی")
         st.caption("اگر خالی بگذارید، از ایموجی خودکار (بر اساس آیکون FA) استفاده می‌شود.")
-        st.markdown("**پیشنهاد‌ها:** 🪙 💎 🏦 💰 🥇 📈 🏠 🚗 🌾 ⚡ 🔥 💵 🎁 🏭")
         st.divider()
         if not assets:
             st.info("هنوز دارایی‌ای ثبت نشده.")
         else:
             for a in assets:
                 with st.container(border=True):
-                    c1, c2, c3, c4 = st.columns([1, 2, 4, 1])
+                    c1, c2 = st.columns([1, 4])
                     cur_emoji = asset_overview_emoji(a)
-                    c1.markdown(f'<div style="text-align:center; font-size:2.5rem; padding:8px;">{cur_emoji}</div>', unsafe_allow_html=True)
-                    c2.markdown(f"**{a['name']}**")
-                    if a.get("overview_emoji"):
-                        c2.caption(f"سفارشی: `{a['overview_emoji']}`")
-                    else:
-                        c2.caption("خودکار")
-                    new_emoji = c3.text_input(
-                        "ایموجی سفارشی", value=a.get("overview_emoji", ""), max_chars=8,
-                        placeholder="مثلاً: 🥇 (خالی = خودکار)",
-                        key=f"emoji_input_{a['id']}", label_visibility="collapsed",
-                    )
-                    if c4.button("💾", key=f"save_emoji_{a['id']}", help="ذخیره"):
-                        for i, x in enumerate(data["assets"]):
-                            if x["id"] == a["id"]:
-                                data["assets"][i]["overview_emoji"] = new_emoji.strip()[:8]
-                                break
-                        st.session_state.data = data
-                        save_all(data)
-                        st.rerun()
+                    with c1:
+                        st.markdown(f'<div style="text-align:center; font-size:2.8rem; padding:8px;">{cur_emoji}</div>', unsafe_allow_html=True)
+                    with c2:
+                        status = f"`{a['overview_emoji']}`" if a.get("overview_emoji") else "خودکار"
+                        st.markdown(f"**{a['name']}** — {status}")
+
+                    with st.expander("🖼️ انتخاب ایموجی از گرید", expanded=False):
+                        def _save_em(v, _id=a["id"]):
+                            for i, x in enumerate(data["assets"]):
+                                if x["id"] == _id:
+                                    data["assets"][i]["overview_emoji"] = v
+                                    break
+                            st.session_state.data = data
+                            save_all(data)
+                        _emoji_grid_picker(f"emoji_{a['id']}",
+                                          a.get("overview_emoji", "") if a.get("overview_emoji") else "",
+                                          _save_em)
 
     with t_lib:
         all_icons = load_fa_icons()
