@@ -1194,6 +1194,7 @@ for r in reversed(sorted_r):
                         bump_version(vk)
                         save_all(data)
                         st.rerun()
+                        
 # ================== صفحه تنظیمات ==================
 elif selected == "settings":
     render_settings_page(data)
