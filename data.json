@@ -133,7 +133,7 @@
     }
   ],
   "settings": {
-    "font": "vazirmatn",
+    "font": "custom_iranyekanweblightfanum",
     "nav_icons": {
       "overview": {
         "icon": "fa-chart-pie",
@@ -165,6 +165,6 @@
     },
     "dark_mode": false
   },
-  "last_saved": "2026-11-01T09:38:05.790543",
+  "last_saved": "2026-11-01T09:38:16.229781",
   "last_saved_jalali": "1405/08/10 - 09:38"
 }
