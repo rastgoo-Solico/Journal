@@ -1137,6 +1137,7 @@ elif selected == "usd":
                     st.session_state.data = data
                     save_all(data)
                     st.rerun()
+
     rates = data.get("usd_rates", [])
     if rates:
         sorted_r = sorted(rates, key=lambda x: x.get("created_at", ""))
@@ -1155,46 +1156,45 @@ elif selected == "usd":
                          paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
                          plot_bgcolor="rgba(0,0,0,0)" if _dark else "white")
         st.plotly_chart(fig, use_container_width=True)
-        st.subheader("📋 تاریخچه")
-for r in reversed(sorted_r):
-    with st.container(border=True):
-        c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 3, 3, 1, 1])
-        c1.markdown(f"**{r['rate']:,.0f} ریال**")
-        c2.caption(f"📅 {r.get('created_at_jalali', '—')}")
-        c3.caption(r.get("note", "—") or "—")
-        c4.caption(iso_to_jalali(r.get("created_at", ""), with_time=True))
-        if c5.button("✏️", key=f"edit_btn_rate_{r['id']}", help="ویرایش"):
-            st.session_state[f"edit_open_rate_{r['id']}"] = not st.session_state.get(f"edit_open_rate_{r['id']}", False)
-        if c6.button("🗑️", key=f"delrate_{r['id']}", help="حذف"):
-            data["usd_rates"] = [x for x in data["usd_rates"] if x["id"] != r["id"]]
-            st.session_state.data = data
-            save_all(data)
-            st.rerun()
 
-        if st.session_state.get(f"edit_open_rate_{r['id']}", False):
-            vk = f"v_rate_{r['id']}"
-            fk = f"edit_rate_{r['id']}_v{get_version(vk)}"
-            with st.form(fk):
-                ec1, ec2 = st.columns([2, 3])
-                er_date = ec1.text_input("تاریخ", value=r.get("created_at_jalali", today_jalali_str()))
-                er_rate = ec2.number_input("نرخ", value=int(r["rate"]), min_value=1, step=1000, format="%d")
-                er_note = st.text_input("توضیح", value=r.get("note", ""))
-                if st.form_submit_button("💾 ذخیره", use_container_width=True):
-                    jd = parse_jalali(er_date)
-                    if jd and er_rate > 0:
-                        tp = r["created_at"][11:16] if len(r.get("created_at", "")) >= 16 else "00:00"
-                        giso = jalali_to_gregorian_iso(jd, tp)
-                        for i, x in enumerate(data["usd_rates"]):
-                            if x["id"] == r["id"]:
-                                data["usd_rates"][i] = {"id": r["id"], "rate": er_rate, "note": er_note.strip(),
-                                                       "created_at": giso, "created_at_jalali": jd.strftime("%Y/%m/%d")}
-                                break
-                        st.session_state.data = data
-                        st.session_state[f"edit_open_rate_{r['id']}"] = False
-                        bump_version(vk)
-                        save_all(data)
-                        st.rerun()
-                        
+        st.subheader("📋 تاریخچه")
+        for r in reversed(sorted_r):
+            with st.container(border=True):
+                c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 3, 3, 1, 1])
+                c1.markdown(f"**{r['rate']:,.0f} ریال**")
+                c2.caption(f"📅 {r.get('created_at_jalali', '—')}")
+                c3.caption(r.get("note", "—") or "—")
+                c4.caption(iso_to_jalali(r.get("created_at", ""), with_time=True))
+                if c5.button("✏️", key=f"edit_btn_rate_{r['id']}", help="ویرایش"):
+                    st.session_state[f"edit_open_rate_{r['id']}"] = not st.session_state.get(f"edit_open_rate_{r['id']}", False)
+                if c6.button("🗑️", key=f"delrate_{r['id']}", help="حذف"):
+                    data["usd_rates"] = [x for x in data["usd_rates"] if x["id"] != r["id"]]
+                    st.session_state.data = data
+                    save_all(data)
+                    st.rerun()
+                if st.session_state.get(f"edit_open_rate_{r['id']}", False):
+                    vk = f"v_rate_{r['id']}"
+                    fk = f"edit_rate_{r['id']}_v{get_version(vk)}"
+                    with st.form(fk):
+                        ec1, ec2 = st.columns([2, 3])
+                        er_date = ec1.text_input("تاریخ", value=r.get("created_at_jalali", today_jalali_str()))
+                        er_rate = ec2.number_input("نرخ", value=int(r["rate"]), min_value=1, step=1000, format="%d")
+                        er_note = st.text_input("توضیح", value=r.get("note", ""))
+                        if st.form_submit_button("💾 ذخیره", use_container_width=True):
+                            jd = parse_jalali(er_date)
+                            if jd and er_rate > 0:
+                                tp = r["created_at"][11:16] if len(r.get("created_at", "")) >= 16 else "00:00"
+                                giso = jalali_to_gregorian_iso(jd, tp)
+                                for i, x in enumerate(data["usd_rates"]):
+                                    if x["id"] == r["id"]:
+                                        data["usd_rates"][i] = {"id": r["id"], "rate": er_rate, "note": er_note.strip(),
+                                                               "created_at": giso, "created_at_jalali": jd.strftime("%Y/%m/%d")}
+                                        break
+                                st.session_state.data = data
+                                st.session_state[f"edit_open_rate_{r['id']}"] = False
+                                bump_version(vk)
+                                save_all(data)
+                                st.rerun()
 # ================== صفحه تنظیمات ==================
 elif selected == "settings":
     render_settings_page(data)
