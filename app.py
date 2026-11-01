@@ -12,27 +12,22 @@ import jdatetime
 
 from styles import FONTS, inject_login, inject_app
 
-# ================== تنظیمات پایه ==================
-st.set_page_config(page_title="داشبورد مالی", layout="wide", initial_sidebar_state="expanded")
-DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
-APP_PASSWORD = st.secrets.get("APP_PASSWORD")
-GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
-GITHUB_REPO = st.secrets.get("GITHUB_REPO", "")
-GITHUB_FILE_PATH = "data.json"
-GITHUB_BRANCH = "main"
+# ================== ثابت‌های پایه ==================
+DEFAULT_NAV_ICONS = {
+    "overview": {"icon": "fa-chart-pie", "color": "#3b82f6"},
+    "journal": {"icon": "fa-circle-plus", "color": "#10b981"},
+    "usd": {"icon": "fa-dollar-sign", "color": "#f59e0b"},
+    "settings": {"icon": "fa-gear", "color": "#6b7280"},
+}
+NAV_LABELS = {"overview": "نمای کلی", "journal": "افزودن دارایی", "usd": "دلار", "settings": "تنظیمات"}
+NAV_EMOJI = {"overview": "📊", "journal": "➕", "usd": "💵", "settings": "⚙️"}
 
-def get_auth_token():
-    return hashlib.sha256((APP_PASSWORD + "_salt_v2_2024").encode()).hexdigest()
-
-AUTH_TOKEN = get_auth_token()
-
-# ================== آیکون‌های FA ==================
 FALLBACK_ICONS = [
     {"class": "fa-folder", "label": "Folder", "categories": ["files"]},
     {"class": "fa-coins", "label": "Coins", "categories": ["money"]},
     {"class": "fa-wallet", "label": "Wallet", "categories": ["money"]},
-    {"class": "fa-money-bill-wave", "label": "Money Bill", "categories": ["money"]},
-    {"class": "fa-dollar-sign", "label": "Dollar Sign", "categories": ["money"]},
+    {"class": "fa-money-bill-wave", "label": "Money", "categories": ["money"]},
+    {"class": "fa-dollar-sign", "label": "Dollar", "categories": ["money"]},
     {"class": "fa-building-columns", "label": "Bank", "categories": ["money", "buildings"]},
     {"class": "fa-piggy-bank", "label": "Piggy Bank", "categories": ["money"]},
     {"class": "fa-vault", "label": "Vault", "categories": ["money", "security"]},
@@ -60,8 +55,47 @@ FALLBACK_ICONS = [
     {"class": "fa-circle-plus", "label": "Circle Plus", "categories": ["interfaces"]},
 ]
 
+CATEGORY_LABELS_FA = {
+    "money": "💰 پول و مالی", "business": "💼 کسب و کار",
+    "charts-diagrams": "📊 نمودار", "buildings": "🏢 ساختمان",
+    "shopping": "🛒 خرید", "security": "🔒 امنیت",
+    "transportation": "🚗 حمل و نقل", "nature": "🌿 طبیعت",
+    "food-beverage": "🍔 غذا", "education": "🎓 آموزش",
+    "users-people": "👥 افراد", "time": "⏰ زمان",
+    "weather": "☁️ آب و هوا", "medical-health": "🏥 پزشکی",
+    "science": "🔬 علم", "computers": "💻 کامپیوتر",
+    "animals": "🐾 حیوانات", "arrows": "➡️ فلش‌ها",
+    "communication": "💬 ارتباطات", "design": "🎨 طراحی",
+    "files": "📁 فایل‌ها", "interfaces": "🖱️ رابط کاربری",
+    "maps": "🗺️ نقشه", "mathematics": "🔢 ریاضیات",
+    "media-playback": "▶️ رسانه", "music-audio": "🎵 موسیقی",
+    "photography": "📷 عکاسی", "sports-fitness": "⚽ ورزش",
+    "travel-hotel": "✈️ سفر", "energy": "⚡ انرژی",
+    "household": "🏠 خانه", "logistics": "📦 لجستیک",
+    "marketing": "📢 بازاریابی", "shapes": "🔷 اشکال",
+    "text-formatting": "📝 متن", "games": "🎮 بازی",
+    "holiday": "🎉 تعطیلات", "religion": "🕌 مذهب",
+    "political": "🏛️ سیاسی", "charity": "❤️ خیریه",
+    "__uncategorized__": "📌 سایر",
+}
+
+# ================== تنظیمات صفحه ==================
+st.set_page_config(page_title="داشبورد مالی", layout="wide", initial_sidebar_state="expanded")
+DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
+APP_PASSWORD = st.secrets.get("APP_PASSWORD") or "S@mnet11970"
+GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
+GITHUB_REPO = st.secrets.get("GITHUB_REPO", "")
+GITHUB_FILE_PATH = "data.json"
+GITHUB_BRANCH = "main"
+
+def get_auth_token():
+    return hashlib.sha256((APP_PASSWORD + "_salt_v2_2024").encode()).hexdigest()
+
+AUTH_TOKEN = get_auth_token()
+
+# ================== آیکون‌ها ==================
 @st.cache_data(ttl=86400, show_spinner=False)
-def load_fa_icons(cache_v="v4"):
+def load_fa_icons(cache_v="v6"):
     try:
         r = requests.get(
             "https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/metadata/icons.json",
@@ -73,9 +107,7 @@ def load_fa_icons(cache_v="v4"):
             for name, info in meta.items():
                 if "solid" not in info.get("free", []):
                     continue
-                cats = info.get("categories", [])
-                if not cats:
-                    cats = ["__uncategorized__"]
+                cats = info.get("categories", []) or ["__uncategorized__"]
                 icons.append({
                     "class": f"fa-{name}",
                     "label": info.get("label", name),
@@ -86,7 +118,7 @@ def load_fa_icons(cache_v="v4"):
     except Exception:
         pass
     return FALLBACK_ICONS
-    
+
 def icon_emoji(fa_class):
     _EMOJI = {
         "fa-folder": "📁", "fa-coins": "🪙", "fa-wallet": "👛", "fa-dollar-sign": "💲",
@@ -131,7 +163,7 @@ def fmt_num(x):
     except Exception:
         return str(x)
 
-# ================== 🔐 احراز هویت ==================
+# ================== احراز هویت ==================
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 if not st.session_state.authenticated:
@@ -142,18 +174,18 @@ if not st.session_state.authenticated:
 if not st.session_state.authenticated:
     inject_login()
     st.markdown("<div style='height: 6vh;'></div>", unsafe_allow_html=True)
-    col_l, col_c, col_r = st.columns([1, 2, 1])
+    _, col_c, _ = st.columns([1, 2, 1])
     with col_c:
         st.markdown("""
         <div style="text-align:center; padding: 24px 0 16px 0; direction: rtl;">
             <div style="font-size: 3.2rem; line-height: 1; margin-bottom: 8px;">🔐</div>
             <h1 style="margin: 0; color: #1e40af;">داشبورد مالی</h1>
-            <p style="color: #6b7280; margin-top: 8px; font-size: 0.95rem;">لطفاً برای مشاهده، رمز عبور را وارد کنید</p>
+            <p style="color: #6b7280; margin-top: 8px;">لطفاً رمز عبور را وارد کنید</p>
         </div>
         """, unsafe_allow_html=True)
         with st.container(border=True):
-            with st.form("login_form", clear_on_submit=False):
-                password = st.text_input("رمز عبور", type="password", placeholder="••••••••", label_visibility="collapsed")
+            with st.form("login_form"):
+                password = st.text_input("رمز", type="password", placeholder="••••••••", label_visibility="collapsed")
                 if st.form_submit_button("🚪 ورود", use_container_width=True):
                     if password == APP_PASSWORD:
                         st.session_state.authenticated = True
@@ -231,7 +263,7 @@ def save_github_file(data):
         if r.status_code in (200, 201): return True, ""
         if r.status_code == 401: return False, "توکن نامعتبر (401)"
         if r.status_code == 403: return False, "دسترسی write ندارد (403)"
-        if r.status_code == 404: return False, "مخزن یا branch یافت نشد (404)"
+        if r.status_code == 404: return False, "مخزن یافت نشد (404)"
         if r.status_code == 409: return False, "تضاد SHA (409)"
         return False, f"HTTP {r.status_code}"
     except Exception as e:
@@ -253,34 +285,42 @@ def verify_github_save(expected_data):
     except Exception as e:
         return False, str(e)[:50], None
 
-# ================== مهاجرت ==================
+# ================== مهاجرت داده ==================
 def migrate_data(data):
     if not isinstance(data, dict) or not data:
-        return {"assets": [], "usd_rates": [], "settings": {"font": "vazirmatn", "nav_icons": DEFAULT_NAV_ICONS.copy(), "custom_fonts": {}, "dark_mode": False}}
+        return {"assets": [], "usd_rates": [], "settings": {
+            "font": "vazirmatn", "nav_icons": DEFAULT_NAV_ICONS.copy(),
+            "custom_fonts": {}, "dark_mode": False}}
     if "usd_rates" not in data or not isinstance(data.get("usd_rates"), list):
         old = data.get("usd_rate")
         data["usd_rates"] = []
         if old:
             data["usd_rates"].append({"id": datetime.now().isoformat(), "rate": old, "note": "منتقل‌شده",
-                                     "created_at": datetime.now().isoformat(), "created_at_jalali": today_jalali_str()})
+                                     "created_at": datetime.now().isoformat(),
+                                     "created_at_jalali": today_jalali_str()})
         data.pop("usd_rate", None)
     if "journals" in data and isinstance(data.get("journals"), list):
-        if "assets" not in data or not isinstance(data.get("assets"), list): data["assets"] = []
+        if "assets" not in data or not isinstance(data.get("assets"), list):
+            data["assets"] = []
         for j in data.get("journals", []):
             aid = j.get("id") or datetime.now().isoformat()
             ciso = j.get("created_at_gregorian") or j.get("created_at") or datetime.now().isoformat()
             cjal = j.get("created_at_jalali") or iso_to_jalali(ciso, with_time=False)
-            data["assets"].append({"id": aid, "name": j.get("asset_name", "بدون نام"),
-                                  "icon": "fa-folder", "color": "#3b82f6", "overview_emoji": "",
-                                  "currency": j.get("currency", "IRR"),
-                                  "created_at_gregorian": ciso, "created_at_jalali": cjal,
-                                  "records": [{"id": aid + "_r", "date_gregorian": ciso, "date_jalali": cjal,
-                                              "quantity": j.get("amount", 0), "unit_price": 1, "note": "منتقل‌شده"}]})
+            data["assets"].append({
+                "id": aid, "name": j.get("asset_name", "بدون نام"),
+                "icon": "fa-folder", "color": "#3b82f6", "overview_emoji": "",
+                "currency": j.get("currency", "IRR"),
+                "created_at_gregorian": ciso, "created_at_jalali": cjal,
+                "records": [{"id": aid + "_r", "date_gregorian": ciso, "date_jalali": cjal,
+                            "quantity": j.get("amount", 0), "unit_price": 1, "note": "منتقل‌شده"}]})
         data.pop("journals", None)
-    if "assets" not in data or not isinstance(data.get("assets"), list): data["assets"] = []
-    if "usd_rates" not in data or not isinstance(data.get("usd_rates"), list): data["usd_rates"] = []
+    if "assets" not in data or not isinstance(data.get("assets"), list):
+        data["assets"] = []
+    if "usd_rates" not in data or not isinstance(data.get("usd_rates"), list):
+        data["usd_rates"] = []
     if "settings" not in data or not isinstance(data.get("settings"), dict):
-        data["settings"] = {"font": "vazirmatn", "nav_icons": DEFAULT_NAV_ICONS.copy(), "custom_fonts": {}, "dark_mode": False}
+        data["settings"] = {"font": "vazirmatn", "nav_icons": DEFAULT_NAV_ICONS.copy(),
+                            "custom_fonts": {}, "dark_mode": False}
     data["settings"].setdefault("font", "vazirmatn")
     data["settings"].setdefault("dark_mode", False)
     if "nav_icons" not in data["settings"] or not isinstance(data["settings"].get("nav_icons"), dict):
@@ -289,6 +329,14 @@ def migrate_data(data):
         data["settings"]["nav_icons"].setdefault(k, v.copy())
     if "custom_fonts" not in data["settings"] or not isinstance(data["settings"].get("custom_fonts"), dict):
         data["settings"]["custom_fonts"] = {}
+    # dedup assets
+    seen = set()
+    unique = []
+    for a in data["assets"]:
+        if a.get("id") and a["id"] not in seen:
+            seen.add(a["id"])
+            unique.append(a)
+    data["assets"] = unique
     for a in data["assets"]:
         if not isinstance(a.get("icon"), str) or not a["icon"].startswith("fa-"):
             a["icon"] = "fa-folder"
@@ -312,7 +360,7 @@ def load_all():
         return migrate_data(gh)
     if l_has:
         return migrate_data(local)
-    return {"assets": [], "usd_rates": [], "settings": {"font": "vazirmatn", "nav_icons": DEFAULT_NAV_ICONS.copy(), "custom_fonts": {}, "dark_mode": False}}
+    return migrate_data({})
 
 def save_all(data, verify=True):
     data["last_saved"] = datetime.now().isoformat()
@@ -348,10 +396,10 @@ def get_settings(data):
 def get_all_fonts(data):
     fonts = {}
     for k, (name, url) in FONTS.items():
-        fonts[k] = {"name": name, "family": name, "builtin": True, "url": url}
+        fonts[k] = {"name": name, "family": name, "builtin": True}
     custom = (data.get("settings") or {}).get("custom_fonts", {}) or {}
     for k, info in custom.items():
-        fonts[k] = {"name": info.get("display_name", k), "family": k, "builtin": False, "url": None}
+        fonts[k] = {"name": info.get("display_name", k), "family": k, "builtin": False}
     return fonts
 
 def asset_icon(asset):
@@ -361,14 +409,9 @@ def asset_icon(asset):
 def asset_color(asset):
     return asset.get("color", "#3b82f6")
 
-def asset_icon_emoji(asset):
-    return icon_emoji(asset_icon(asset))
-
 def asset_overview_emoji(asset):
     custom = (asset.get("overview_emoji") or "").strip()
-    if custom:
-        return custom
-    return icon_emoji(asset_icon(asset))
+    return custom if custom else icon_emoji(asset_icon(asset))
 
 def get_current_usd_rate(data):
     rates = data.get("usd_rates", [])
@@ -395,7 +438,8 @@ def currency_label(cur):
     return "ریال" if cur == "IRR" else "دلار"
 
 def get_version(key):
-    if key not in st.session_state: st.session_state[key] = 0
+    if key not in st.session_state:
+        st.session_state[key] = 0
     return st.session_state[key]
 
 def bump_version(key):
@@ -459,35 +503,9 @@ def render_html_table(df, dark=False):
     html += '</tbody></table></div>'
     st.markdown(html, unsafe_allow_html=True)
 
-# ================== گرید آیکون و ایموجی ==================
-CATEGORY_LABELS_FA = {
-    "money": "💰 پول و مالی", "business": "💼 کسب و کار",
-    "charts-diagrams": "📊 نمودار", "buildings": "🏢 ساختمان",
-    "shopping": "🛒 خرید", "security": "🔒 امنیت",
-    "transportation": "🚗 حمل و نقل", "nature": "🌿 طبیعت",
-    "food-beverage": "🍔 غذا و نوشیدنی", "education": "🎓 آموزش",
-    "users-people": "👥 افراد", "time": "⏰ زمان",
-    "weather": "☁️ آب و هوا", "medical-health": "🏥 پزشکی",
-    "science": "🔬 علم", "computers": "💻 کامپیوتر",
-    "animals": "🐾 حیوانات", "arrows": "➡️ فلش‌ها",
-    "communication": "💬 ارتباطات", "design": "🎨 طراحی",
-    "files": "📁 فایل‌ها", "interfaces": "🖱️ رابط کاربری",
-    "maps": "🗺️ نقشه", "mathematics": "🔢 ریاضیات",
-    "media-playback": "▶️ رسانه", "music-audio": "🎵 موسیقی",
-    "photography": "📷 عکاسی", "sports-fitness": "⚽ ورزش",
-    "travel-hotel": "✈️ سفر", "energy": "⚡ انرژی",
-    "household": "🏠 خانه", "logistics": "📦 لجستیک",
-    "marketing": "📢 بازاریابی", "shapes": "🔷 اشکال",
-    "text-formatting": "📝 متن", "games": "🎮 بازی",
-    "holiday": "🎉 تعطیلات", "religion": "🕌 مذهب",
-    "political": "🏛️ سیاسی", "charity": "❤️ خیریه",
-    "accessibility": "♿ دسترسی‌پذیری", "construction": "🏗️ ساخت",
-    "fruits-vegetables": "🍎 میوه", "hands": "👋 دست‌ها",
-}
+# ================== گرید آیکون با دسته‌بندی ==================
 def _icon_grid_picker(prefix, current, on_save):
     icons = load_fa_icons()
-
-    # استخراج دسته‌های موجود
     all_cats = set()
     for ic in icons:
         for c in ic.get("categories", []):
@@ -496,13 +514,12 @@ def _icon_grid_picker(prefix, current, on_save):
 
     c1, c2 = st.columns([2, 3])
     cat = c1.selectbox(
-        "📂 دسته",
-        cat_options,
+        "📂 دسته", cat_options,
         format_func=lambda x: "🌐 همه" if x == "__all__" else CATEGORY_LABELS_FA.get(x, x),
         key=f"{prefix}_cat",
     )
     s = c2.text_input("🔍", key=f"{prefix}_search",
-                     placeholder="جستجو در آیکون‌ها...", label_visibility="collapsed")
+                     placeholder="جستجو...", label_visibility="collapsed")
 
     filtered = icons if cat == "__all__" else [i for i in icons if cat in i.get("categories", [])]
     if s:
@@ -515,7 +532,6 @@ def _icon_grid_picker(prefix, current, on_save):
     pk = f"{prefix}_page"
     catk = f"{prefix}_cat_prev"
 
-    # با تغییر دسته، به صفحه ۱ برگرد
     if catk not in st.session_state or st.session_state[catk] != cat:
         st.session_state[pk] = 0
         st.session_state[catk] = cat
@@ -541,9 +557,7 @@ def _icon_grid_picker(prefix, current, on_save):
                     f'<div style="text-align:center; padding:10px 4px; border:{border}; '
                     f'border-radius:8px; margin-bottom:4px; background:#f9fafb;">'
                     f'<i class="fa-solid {ic["class"]}" style="font-size:1.6rem; color:#3b82f6;"></i>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+                    f'</div>', unsafe_allow_html=True)
                 lbl = "✅" if is_cur else "انتخاب"
                 if st.button(lbl, key=f"{prefix}_btn_{ic['class']}",
                             use_container_width=True, disabled=is_cur):
@@ -553,21 +567,16 @@ def _icon_grid_picker(prefix, current, on_save):
     if pages > 1:
         pc1, pc2, pc3 = st.columns([1, 2, 1])
         with pc1:
-            if st.button("◀ قبلی", key=f"{prefix}_prev",
-                        use_container_width=True, disabled=(page == 0)):
+            if st.button("◀ قبلی", key=f"{prefix}_prev", use_container_width=True, disabled=(page == 0)):
                 st.session_state[pk] = page - 1
                 st.rerun()
         with pc2:
-            st.markdown(
-                f'<div style="text-align:center; padding-top:8px; font-weight:600;">'
-                f'صفحه {page + 1} / {pages}</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown(f'<div style="text-align:center; padding-top:8px; font-weight:600;">صفحه {page + 1} / {pages}</div>', unsafe_allow_html=True)
         with pc3:
-            if st.button("بعدی ▶", key=f"{prefix}_next",
-                        use_container_width=True, disabled=(page >= pages - 1)):
+            if st.button("بعدی ▶", key=f"{prefix}_next", use_container_width=True, disabled=(page >= pages - 1)):
                 st.session_state[pk] = page + 1
                 st.rerun()
+
 def _emoji_grid_picker(prefix, current, on_save):
     EMOJIS = ["📁", "🪙", "💎", "👑", "💰", "💵", "💴", "💶", "💷", "🏦",
               "🏠", "🏢", "🚗", "🚚", "📈", "📊", "📉", "⚡", "🔥", "💧",
@@ -578,22 +587,22 @@ def _emoji_grid_picker(prefix, current, on_save):
         cols = st.columns(10)
         for j, em in enumerate(EMOJIS[row:row + 10]):
             with cols[j]:
-                is_current = (em == current)
-                btn_label = f"{'✅' if is_current else ''}{em}"
-                if st.button(btn_label, key=f"{prefix}_em_{row + j}", use_container_width=True):
+                is_cur = (em == current)
+                lbl = f"{'✅' if is_cur else ''}{em}"
+                if st.button(lbl, key=f"{prefix}_em_{row + j}", use_container_width=True):
                     on_save(em)
                     st.rerun()
     st.divider()
     c1, c2 = st.columns([3, 1])
-    custom = c1.text_input("یا ایموجی دلخواه", value=current or "", max_chars=8, key=f"{prefix}_custom", placeholder="مثلاً: 🥇")
+    custom = c1.text_input("ایموجی دلخواه", value=current or "", max_chars=8, key=f"{prefix}_custom")
     if c2.button("💾 ذخیره", key=f"{prefix}_save_custom", use_container_width=True):
         on_save(custom.strip()[:8])
         st.rerun()
-    if st.button("🔄 خودکار (خالی کردن)", key=f"{prefix}_clear", use_container_width=True):
+    if st.button("🔄 خودکار", key=f"{prefix}_clear", use_container_width=True):
         on_save("")
         st.rerun()
 
-# ================== مقداردهی + اعمال استایل ==================
+# ================== مقداردهی ==================
 if "data" not in st.session_state:
     st.session_state.data = load_all()
 st.session_state.data = migrate_data(st.session_state.data)
@@ -601,18 +610,6 @@ data = st.session_state.data
 data.setdefault("assets", [])
 data.setdefault("usd_rates", [])
 
-# حذف دارایی‌های با id تکراری (در صورت خرابی داده)
-_seen_ids = set()
-_unique = []
-for _a in data.get("assets", []):
-    if _a.get("id") and _a["id"] not in _seen_ids:
-        _seen_ids.add(_a["id"])
-        _unique.append(_a)
-if len(_unique) != len(data.get("assets", [])):
-    st.warning(f"⚠️ {len(data['assets']) - len(_unique)} دارایی تکراری حذف شد.")
-    data["assets"] = _unique
-    save_local_file(data)
-    
 inject_app(data)
 _dark = get_settings(data)["dark_mode"]
 assets = data.get("assets", [])
@@ -623,8 +620,7 @@ with st.sidebar:
     with c_date:
         st.markdown(f"### 🗓️ {today_jalali_str()}")
     with c_mode:
-        _mode_icon = "☀️" if _dark else "🌙"
-        if st.button(_mode_icon, key="dark_toggle_btn", help="حالت روز / شب", use_container_width=True):
+        if st.button("☀️" if _dark else "🌙", key="dark_toggle_btn", help="حالت روز/شب", use_container_width=True):
             data["settings"]["dark_mode"] = not _dark
             st.session_state.data = data
             save_all(data)
@@ -633,6 +629,9 @@ with st.sidebar:
         st.session_state.authenticated = False
         st.session_state.pop("data", None)
         st.query_params.clear()
+        st.rerun()
+    if st.button("🔄 بازخوانی آیکون‌ها", use_container_width=True, key="reload_icons_btn"):
+        st.cache_data.clear()
         st.rerun()
     st.divider()
 
@@ -645,7 +644,7 @@ with st.sidebar:
         st.markdown(f"""
         <div style="background: {bg_grad}; padding: 14px 16px; border-radius: 10px; border-right: 4px solid {bg_card}; margin-bottom: 12px; direction: rtl; text-align: right;">
             <div style="font-size: 0.82rem; color: {title_col}; margin-bottom: 6px;">💵 نرخ فعلی دلار</div>
-            <div style="font-size: 1.5rem; font-weight: 700; color: {value_col}; line-height: 1.2;">{rate:,.0f}<span style="font-size: 0.95rem; color: {title_col};"> ریال</span></div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: {value_col};">{rate:,.0f}<span style="font-size: 0.95rem; color: {title_col};"> ریال</span></div>
             <div style="font-size: 0.72rem; color: {title_col}; margin-top: 6px;">آخرین: {rate_date}</div>
         </div>
         """, unsafe_allow_html=True)
@@ -677,8 +676,7 @@ with st.sidebar:
         uploaded = st.file_uploader("📤 آپلود JSON", type=["json"], key="uploader")
         if uploaded is not None:
             try:
-                imported = json.loads(uploaded.read().decode("utf-8"))
-                imported = migrate_data(imported)
+                imported = migrate_data(json.loads(uploaded.read().decode("utf-8")))
                 if st.button("✅ اعمال", use_container_width=True):
                     st.session_state.data = imported
                     save_all(imported)
@@ -686,9 +684,8 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"فایل معتبر نیست: {e}")
 
-# ================== ناوبری با نسخه‌بندی ==================
+# ================== ناوبری ==================
 nav_options = ["overview", "journal", "usd"] + [f"asset_{a['id']}" for a in assets] + ["settings"]
-
 nav_labels = {
     "overview": f"{NAV_EMOJI['overview']} {NAV_LABELS['overview']}",
     "journal": f"{NAV_EMOJI['journal']} {NAV_LABELS['journal']}",
@@ -700,7 +697,6 @@ for a in assets:
 
 if "nav_version" not in st.session_state:
     st.session_state.nav_version = 0
-
 if "pending_nav" in st.session_state:
     pending = st.session_state.pending_nav
     del st.session_state.pending_nav
@@ -715,27 +711,13 @@ if st.session_state[_widget_key] not in nav_options:
     st.session_state[_widget_key] = "overview"
 
 if hasattr(st, "pills"):
-    selected = st.pills(
-        "ناوبری",
-        options=nav_options,
-        format_func=lambda x: nav_labels.get(x, x),
-        selection_mode="single",
-        label_visibility="collapsed",
-        key=_widget_key,
-    )
+    selected = st.pills("ناوبری", options=nav_options, format_func=lambda x: nav_labels.get(x, x),
+                       selection_mode="single", label_visibility="collapsed", key=_widget_key)
     if selected is None:
         selected = st.session_state[_widget_key]
 else:
-    selected = st.radio(
-        "ناوبری",
-        options=nav_options,
-        format_func=lambda x: nav_labels.get(x, x),
-        horizontal=True,
-        label_visibility="collapsed",
-        key=_widget_key + "_radio",
-    )
-    if selected is None:
-        selected = "overview"
+    selected = st.radio("ناوبری", options=nav_options, format_func=lambda x: nav_labels.get(x, x),
+                       horizontal=True, label_visibility="collapsed", key=_widget_key + "_radio")
 
 # ================== صفحه تنظیمات ==================
 def render_settings_page(data):
@@ -745,15 +727,14 @@ def render_settings_page(data):
     dark = settings["dark_mode"]
 
     t_font, t_nav, t_assets, t_emoji, t_lib, t_verify, t_storage = st.tabs([
-        "🔤 فونت", "🎨 آیکون منو", "📦 آیکون دارایی", "😀 ایموجی نمای کلی", "📚 کتابخانه", "🔍 تأیید ذخیره", "💾 وضعیت"
-    ])
+        "🔤 فونت", "🎨 آیکون منو", "📦 آیکون دارایی", "😀 ایموجی", "📚 کتابخانه", "🔍 تأیید ذخیره", "💾 وضعیت"])
 
     with t_font:
         st.subheader("🔤 فونت برنامه")
         font_keys = list(all_fonts.keys())
         cur_font = settings["font"] if settings["font"] in font_keys else "vazirmatn"
         c1, c2 = st.columns([3, 1])
-        new_font = c1.selectbox("انتخاب فونت", font_keys, index=font_keys.index(cur_font),
+        new_font = c1.selectbox("فونت", font_keys, index=font_keys.index(cur_font),
                                format_func=lambda k: all_fonts[k]["name"] + (" (سفارشی)" if not all_fonts[k]["builtin"] else ""),
                                key="font_select_v2")
         if c2.button("💾 ذخیره فونت", use_container_width=True, key="apply_font_btn"):
@@ -766,26 +747,24 @@ def render_settings_page(data):
         border_prev = "#30363d" if dark else "#3b82f6"
         st.markdown(
             f'<div style="padding:20px; border:2px solid {border_prev}; border-radius:10px; margin:16px 0; background:{bg_prev}; direction:rtl;">'
-            f'<div style="font-size:0.85rem; color:#6b7280; margin-bottom:10px;">پیش‌نمایش: <b>{all_fonts[new_font]["name"]}</b></div>'
-            f'<div style="font-family:\'{preview_family}\', Tahoma; font-size:1.8rem; margin-bottom:12px;">داشبورد مالی — ۱۲۳۴۵</div>'
-            f'<div style="font-family:\'{preview_family}\', Tahoma; font-size:1.05rem;">این یک متن نمونه است. اعداد: ۱۲۳۴۵۶۷۸۹۰ | 1234567890</div>'
-            f'</div>', unsafe_allow_html=True)
+            f'<div style="font-family:\'{preview_family}\', Tahoma; font-size:1.8rem;">داشبورد مالی — ۱۲۳۴۵</div>'
+            f'<div style="font-family:\'{preview_family}\', Tahoma; font-size:1.05rem;">متن نمونه: ۱۲۳۴۵۶۷۸۹۰ | 1234567890</div></div>',
+            unsafe_allow_html=True)
 
         st.divider()
         st.subheader("📤 بارگذاری فونت سفارشی")
-        st.caption("فرمت‌ها: **TTF, OTF, WOFF, WOFF2** — حداکثر **۱۰ مگابایت**")
+        st.caption("TTF, OTF, WOFF, WOFF2 — حداکثر ۱۰MB")
         with st.form("upload_font_form", clear_on_submit=True):
-            uploaded_file = st.file_uploader("فایل فونت", type=["ttf", "otf", "woff", "woff2"], key="custom_font_uploader")
-            display_name = st.text_input("نام نمایشی", placeholder="مثلاً: فونت شخصی من")
+            uploaded_file = st.file_uploader("فایل", type=["ttf", "otf", "woff", "woff2"], key="custom_font_uploader")
+            display_name = st.text_input("نام نمایشی")
             if st.form_submit_button("📤 بارگذاری", use_container_width=True):
                 if uploaded_file is None:
                     st.error("فایل انتخاب کنید.")
                 elif uploaded_file.size > 10 * 1024 * 1024:
-                    st.error(f"حجم ({uploaded_file.size // 1024:,} KB) بیش از ۱۰MB است.")
+                    st.error("حجم بیش از ۱۰MB.")
                 else:
                     try:
                         fb = uploaded_file.read()
-                        b64 = base64.b64encode(fb).decode()
                         ext = uploaded_file.name.lower().rsplit(".", 1)[-1]
                         fmap = {"ttf": "truetype", "otf": "opentype", "woff": "woff", "woff2": "woff2"}
                         mmap = {"ttf": "font/ttf", "otf": "font/otf", "woff": "font/woff", "woff2": "font/woff2"}
@@ -800,33 +779,28 @@ def render_settings_page(data):
                             fkey = f"{orig}_{c}"
                         data["settings"].setdefault("custom_fonts", {})[fkey] = {
                             "display_name": (display_name.strip() or base_name)[:60],
-                            "data": b64, "format": fmap.get(ext, "truetype"), "mime": mmap.get(ext, "font/ttf"),
+                            "data": base64.b64encode(fb).decode(),
+                            "format": fmap.get(ext, "truetype"), "mime": mmap.get(ext, "font/ttf"),
                             "filename": uploaded_file.name, "size_bytes": len(fb),
-                            "uploaded_at": datetime.now().isoformat(),
-                        }
+                            "uploaded_at": datetime.now().isoformat()}
                         st.session_state.data = data
                         save_all(data)
-                        st.success(f"✅ فونت «{display_name or base_name}» بارگذاری شد.")
+                        st.success("✅ بارگذاری شد.")
                         st.rerun()
                     except Exception as e:
                         st.error(f"خطا: {e}")
 
-        st.divider()
-        st.subheader("📚 فونت‌های سفارشی من")
         custom_fonts = data["settings"].get("custom_fonts", {})
-        if not custom_fonts:
-            st.info("هنوز فونت سفارشی بارگذاری نشده.")
-        else:
+        if custom_fonts:
+            st.divider()
+            st.subheader("📚 فونت‌های سفارشی")
             for key, info in list(custom_fonts.items()):
                 with st.container(border=True):
                     c1, c2, c3, c4 = st.columns([1, 3, 2, 1])
-                    c1.markdown(f'<div style="text-align:center; font-family:\'{key}\', Tahoma; font-size:2.2rem; color:#3b82f6; padding:6px;">آ</div>', unsafe_allow_html=True)
+                    c1.markdown(f'<div style="text-align:center; font-family:\'{key}\', Tahoma; font-size:2.2rem; color:#3b82f6;">آ</div>', unsafe_allow_html=True)
                     c2.markdown(f"**{info.get('display_name', key)}**")
-                    c2.caption(f"`{info.get('filename', '—')}` — {info.get('size_bytes', 0) // 1024:,} KB")
-                    if settings["font"] == key:
-                        c3.success("✅ فعال")
-                    else:
-                        c3.caption(f"`{key[:30]}`")
+                    c2.caption(f"{info.get('size_bytes', 0) // 1024:,} KB")
+                    c3.success("✅ فعال") if settings["font"] == key else c3.caption(f"`{key[:25]}`")
                     if c4.button("🗑️", key=f"del_font_{key}"):
                         del data["settings"]["custom_fonts"][key]
                         if data["settings"]["font"] == key:
@@ -836,8 +810,8 @@ def render_settings_page(data):
                         st.rerun()
 
     with t_nav:
-        st.subheader("🎨 آیکون و رنگ منو")
-        st.caption("روی هر آیکون کلیک کنید تا انتخاب شود. ✅ = آیکون فعلی")
+        st.subheader("🎨 آیکون منو")
+        st.caption("روی هر آیکون کلیک کنید. ✅ = فعلی")
         for nav_key in ["overview", "journal", "usd", "settings"]:
             cfg = settings["nav_icons"].get(nav_key, DEFAULT_NAV_ICONS[nav_key])
             with st.container(border=True):
@@ -845,17 +819,15 @@ def render_settings_page(data):
                 with c1:
                     st.markdown(f'<div style="text-align:center; padding:10px;"><i class="fa-solid {cfg["icon"]}" style="color:{cfg["color"]}; font-size:2.5rem;"></i></div>', unsafe_allow_html=True)
                 with c2:
-                    st.markdown(f"**{NAV_LABELS[nav_key]}** — `{cfg['icon']}`")
+                    st.markdown(f"**{NAV_LABELS[nav_key]}**")
                     new_color = st.color_picker("رنگ", value=cfg["color"], key=f"color_nav_{nav_key}")
-
-                with st.expander("🖼️ انتخاب آیکون از گرید", expanded=False):
+                with st.expander("🖼️ انتخاب آیکون از گرید"):
                     def _save_nav(icon_class, _k=nav_key):
                         current_color = data["settings"]["nav_icons"].get(_k, DEFAULT_NAV_ICONS[_k])["color"]
                         data["settings"]["nav_icons"][_k] = {"icon": icon_class, "color": current_color}
                         st.session_state.data = data
                         save_all(data)
                     _icon_grid_picker(f"nav_{nav_key}", cfg["icon"], _save_nav)
-
                 if st.button("💾 ذخیره رنگ", key=f"save_nav_{nav_key}", use_container_width=True):
                     data["settings"]["nav_icons"][nav_key] = {"icon": cfg["icon"], "color": new_color}
                     st.session_state.data = data
@@ -863,8 +835,7 @@ def render_settings_page(data):
                     st.rerun()
 
     with t_assets:
-        st.subheader("📦 آیکون و رنگ دارایی‌ها")
-        st.caption("روی هر آیکون کلیک کنید تا انتخاب شود. ✅ = آیکون فعلی")
+        st.subheader("📦 آیکون دارایی‌ها")
         if not assets:
             st.info("هنوز دارایی‌ای ثبت نشده.")
         else:
@@ -875,10 +846,9 @@ def render_settings_page(data):
                     with c1:
                         st.markdown(f'<div style="text-align:center; padding:10px;"><i class="fa-solid {cur_ic}" style="color:{cur_col}; font-size:2.5rem;"></i></div>', unsafe_allow_html=True)
                     with c2:
-                        st.markdown(f"**{a['name']}** — `{cur_ic}`")
+                        st.markdown(f"**{a['name']}**")
                         new_color = st.color_picker("رنگ", value=cur_col, key=f"color_asset_{a['id']}")
-
-                    with st.expander("🖼️ انتخاب آیکون از گرید", expanded=False):
+                    with st.expander("🖼️ انتخاب آیکون از گرید"):
                         def _save_asset(icon_class, _id=a["id"]):
                             for i, x in enumerate(data["assets"]):
                                 if x["id"] == _id:
@@ -887,7 +857,6 @@ def render_settings_page(data):
                             st.session_state.data = data
                             save_all(data)
                         _icon_grid_picker(f"asset_{a['id']}", cur_ic, _save_asset)
-
                     if st.button("💾 ذخیره رنگ", key=f"save_asset_{a['id']}", use_container_width=True):
                         for i, x in enumerate(data["assets"]):
                             if x["id"] == a["id"]:
@@ -898,24 +867,19 @@ def render_settings_page(data):
                         st.rerun()
 
     with t_emoji:
-        st.subheader("😀 ایموجی نمایش در نمای کلی")
-        st.caption("روی ایموجی کلیک کنید تا انتخاب شود. ✅ = انتخاب فعلی")
-        st.caption("اگر خالی بگذارید، از ایموجی خودکار (بر اساس آیکون FA) استفاده می‌شود.")
-        st.divider()
+        st.subheader("😀 ایموجی نمای کلی")
         if not assets:
             st.info("هنوز دارایی‌ای ثبت نشده.")
         else:
             for a in assets:
                 with st.container(border=True):
                     c1, c2 = st.columns([1, 4])
-                    cur_emoji = asset_overview_emoji(a)
                     with c1:
-                        st.markdown(f'<div style="text-align:center; font-size:2.8rem; padding:8px;">{cur_emoji}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div style="text-align:center; font-size:2.8rem; padding:8px;">{asset_overview_emoji(a)}</div>', unsafe_allow_html=True)
                     with c2:
                         status = f"`{a['overview_emoji']}`" if a.get("overview_emoji") else "خودکار"
                         st.markdown(f"**{a['name']}** — {status}")
-
-                    with st.expander("🖼️ انتخاب ایموجی از گرید", expanded=False):
+                    with st.expander("🖼️ انتخاب ایموجی"):
                         def _save_em(v, _id=a["id"]):
                             for i, x in enumerate(data["assets"]):
                                 if x["id"] == _id:
@@ -923,110 +887,91 @@ def render_settings_page(data):
                                     break
                             st.session_state.data = data
                             save_all(data)
-                        _emoji_grid_picker(f"emoji_{a['id']}",
-                                          a.get("overview_emoji", "") if a.get("overview_emoji") else "",
-                                          _save_em)
+                        _emoji_grid_picker(f"emoji_{a['id']}", a.get("overview_emoji", ""), _save_em)
 
     with t_lib:
-        all_icons = load_fa_icons()
-        st.caption(f"مجموعاً **{len(all_icons)}** آیکون FA رایگان")
-        search_lib = st.text_input("🔍 جستجو", key="fa_lib_search", placeholder="مثلاً: money, chart...")
-        filtered = [ic for ic in all_icons if search_lib.lower() in ic["label"].lower() or search_lib.lower() in ic["class"].lower()] if search_lib else all_icons
+        icons = load_fa_icons()
+        st.caption(f"**{len(icons)}** آیکون FA")
+        s = st.text_input("🔍 جستجو", key="fa_lib_search")
+        filtered = [ic for ic in icons if s.lower() in ic["label"].lower() or s.lower() in ic["class"].lower()] if s else icons
         display = filtered[:120]
-        st.caption(f"**{len(filtered)}** یافت شد — نمایش {len(display)}")
         for i in range(0, len(display), 8):
             cols = st.columns(8)
-            for j, ic in enumerate(display[i:i+8]):
+            for j, ic in enumerate(display[i:i + 8]):
                 with cols[j]:
                     st.markdown(
-                        f'<div style="text-align:center; padding:8px; border:1px solid #e5e7eb; border-radius:6px; margin:2px;" title="{ic["class"]}">'
+                        f'<div style="text-align:center; padding:8px; border:1px solid #e5e7eb; border-radius:6px;" title="{ic["class"]}">'
                         f'<i class="fa-solid {ic["class"]}" style="font-size:1.4rem; color:#3b82f6;"></i>'
-                        f'<div style="font-size:0.6rem; margin-top:4px; color:#6b7280; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{ic["label"]}</div></div>',
+                        f'<div style="font-size:0.6rem; color:#6b7280; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{ic["label"]}</div></div>',
                         unsafe_allow_html=True)
 
     with t_verify:
-        st.subheader("🔍 تأیید ذخیره‌سازی")
+        st.subheader("🔍 تأیید ذخیره")
         if data.get("last_saved"):
-            st.info(f"📅 **آخرین ذخیره:** {data.get('last_saved_jalali', '—')}")
+            st.info(f"📅 آخرین: {data.get('last_saved_jalali', '—')}")
         else:
-            st.warning("⚠️ هنوز ذخیره‌ای انجام نشده!")
+            st.warning("هنوز ذخیره‌ای انجام نشده")
         st.divider()
         col1, col2, col3 = st.columns(3)
         with col1:
-            if st.button("🔍 تأیید ذخیره", use_container_width=True, key="verify_gh_btn"):
+            if st.button("🔍 تأیید", use_container_width=True, key="verify_gh_btn"):
                 v_ok, v_msg, sha = verify_github_save(data)
                 (st.success if v_ok else st.error)(f"{'✅' if v_ok else '❌'} {v_msg}")
-                if sha: st.caption(f"SHA: `{sha}`")
         with col2:
             if st.button("🔄 بارگذاری از GitHub", use_container_width=True, key="force_load_btn"):
                 gh = load_github_file()
                 if gh:
                     st.session_state.data = migrate_data(gh)
                     save_local_file(st.session_state.data)
-                    st.success(f"✅ بارگذاری شد — {len(gh.get('assets', []))} دارایی")
+                    st.success("✅ بارگذاری شد")
                     st.rerun()
                 else:
-                    st.error("❌ خواندن ناموفق")
+                    st.error("❌ ناموفق")
         with col3:
             if st.button("💾 ذخیره فوری", use_container_width=True, key="force_save_btn"):
                 if save_all(data):
-                    st.success("✅ ذخیره شد")
                     st.rerun()
         st.divider()
-        st.markdown("**📊 مقایسه داده حافظه با GitHub**")
         gh = load_github_file()
         if gh:
             c1, c2 = st.columns(2)
             with c1:
-                st.markdown("**در حافظه:**")
-                st.caption(f"دارایی‌ها: {len(data.get('assets', []))}")
-                st.caption(f"رکوردها: {sum(len(a.get('records', [])) for a in data.get('assets', []))}")
+                st.markdown("**حافظه:**")
+                st.caption(f"دارایی: {len(data.get('assets', []))}")
                 st.caption(f"last_saved: {data.get('last_saved', '—')[:19]}")
             with c2:
-                st.markdown("**در GitHub:**")
-                st.caption(f"دارایی‌ها: {len(gh.get('assets', []))}")
-                st.caption(f"رکوردها: {sum(len(a.get('records', [])) for a in gh.get('assets', []))}")
+                st.markdown("**GitHub:**")
+                st.caption(f"دارایی: {len(gh.get('assets', []))}")
                 st.caption(f"last_saved: {gh.get('last_saved', '—')[:19]}")
             if data.get("last_saved") == gh.get("last_saved"):
-                st.success("✅ یکسان هستند")
+                st.success("✅ یکسان")
             else:
-                st.warning("⚠️ متفاوت هستند — روی «ذخیره فوری» بزنید")
-        else:
-            st.error("❌ خواندن از GitHub ناموفق!")
+                st.warning("⚠️ متفاوت — ذخیره فوری بزنید")
 
     with t_storage:
-        st.subheader("💾 وضعیت اتصال")
+        st.subheader("💾 وضعیت")
         local_ok = os.path.exists(DATA_FILE)
         gh_status, gh_msg = check_github_status(GITHUB_TOKEN, GITHUB_REPO)
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("**📁 فایل محلی**")
-            if local_ok:
-                st.success(f"✅ ({os.path.getsize(DATA_FILE):,} بایت)")
-            else:
-                st.error("❌ یافت نشد")
+            st.markdown("**📁 محلی**")
+            st.success(f"✅ ({os.path.getsize(DATA_FILE):,} بایت)") if local_ok else st.error("❌ یافت نشد")
         with c2:
             st.markdown("**☁️ GitHub**")
-            if gh_status == "ok":
-                st.success(f"✅ {gh_msg}")
-            else:
-                st.error(f"❌ {gh_msg}")
-                with st.expander("🔧 راهنما"):
-                    st.code('GITHUB_TOKEN = "ghp_..."\nGITHUB_REPO = "user/repo"\nAPP_PASSWORD = "..."', language="toml")
+            st.success(f"✅ {gh_msg}") if gh_status == "ok" else st.error(f"❌ {gh_msg}")
         st.divider()
-        st.subheader("📊 آمار")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("دارایی‌ها", len(data.get("assets", [])))
         c2.metric("رکوردها", sum(len(a.get("records", [])) for a in data.get("assets", [])))
         c3.metric("نرخ دلار", len(data.get("usd_rates", [])))
-        c4.metric("فونت سفارشی", len(data.get("settings", {}).get("custom_fonts", {})))
+        c4.metric("فونت‌ها", len(data.get("settings", {}).get("custom_fonts", {})))
 
 # ================== صفحه نمای کلی ==================
 if selected == "overview":
     st.header("📊 نمای کلی دارایی‌ها")
     rate, _ = get_current_usd_rate(data)
     if not assets:
-        st.info("هنوز دارایی‌ای ثبت نشده. از تب «افزودن دارایی» اضافه کنید.")
+        st.info("هنوز دارایی‌ای ثبت نشده.")
     else:
         rows = []; total_usd = 0.0
         for a in assets:
@@ -1040,53 +985,40 @@ if selected == "overview":
         c1.metric("💰 کل ارزش (دلاری)", f"${total_usd:,.2f}")
         c2.metric("📁 دارایی‌ها", len(assets))
         c3.metric("💵 نرخ دلار", f"{rate:,.0f} ریال" if rate else "ثبت نشده")
-        st.subheader("🥧 ترکیب دارایی‌ها")
+        st.subheader("🥧 ترکیب")
         pie_df = df.dropna(subset=["معادل_دلاری"])
         pie_df = pie_df[pie_df["معادل_دلاری"] > 0]
         if not pie_df.empty:
             fig = px.pie(pie_df, values="معادل_دلاری", names="دارایی", hole=0.4,
                         color_discrete_sequence=px.colors.qualitative.Set3)
-            fig.update_layout(font=dict(family="Vazirmatn, Tahoma", size=14),
+            fig.update_layout(font=dict(family="Vazirmatn, Tahoma", size=14, color="#e6edf3" if _dark else "#1f2937"),
                              legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
                              margin=dict(t=20, b=20, l=10, r=10),
                              paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-                             plot_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-                             font_color="#e6edf3" if _dark else "#1f2937")
+                             plot_bgcolor="rgba(0,0,0,0)" if _dark else "white")
             st.plotly_chart(fig, use_container_width=True)
-        st.subheader("📈 روند رشد ارزش کل")
+        st.subheader("📈 روند رشد")
         timeline = build_portfolio_timeline(data)
         if len(timeline) >= 2:
-            fig_usd = px.line(timeline, x="date_jalali", y="total_usd", markers=True,
-                             labels={"date_jalali": "تاریخ", "total_usd": "دلار"},
-                             color_discrete_sequence=["#3b82f6"])
-            fig_usd.update_traces(hovertemplate="%{x}<br>$%{y:,.2f}<extra></extra>",
-                                 line=dict(width=3), marker=dict(size=7))
-            fig_usd.update_layout(font=dict(family="Vazirmatn, Tahoma", size=13, color="#e6edf3" if _dark else "#1f2937"),
+            for metric_key, title, color in [("total_usd", "💵 ارزش به دلار", "#3b82f6"), ("total_irr", "🇮🇷 ارزش به ریال", "#10b981")]:
+                fig = px.line(timeline, x="date_jalali", y=metric_key, markers=True,
+                             labels={"date_jalali": "تاریخ", metric_key: title},
+                             color_discrete_sequence=[color])
+                fig.update_traces(line=dict(width=3), marker=dict(size=7))
+                fig.update_layout(font=dict(family="Vazirmatn, Tahoma", size=13, color="#e6edf3" if _dark else "#1f2937"),
                                  yaxis=dict(tickformat=",.0f"), xaxis=dict(title="تاریخ"),
-                                 margin=dict(t=30, b=20, l=10, r=10), hovermode="x unified",
+                                 margin=dict(t=30, b=20), hovermode="x unified",
                                  paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
                                  plot_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-                                 title=dict(text="💵 ارزش کل به دلار", font=dict(size=14)))
-            st.plotly_chart(fig_usd, use_container_width=True)
-            fig_irr = px.line(timeline, x="date_jalali", y="total_irr", markers=True,
-                             labels={"date_jalali": "تاریخ", "total_irr": "ریال"},
-                             color_discrete_sequence=["#10b981"])
-            fig_irr.update_traces(hovertemplate="%{x}<br>%{y:,.0f} ریال<extra></extra>",
-                                 line=dict(width=3), marker=dict(size=7))
-            fig_irr.update_layout(font=dict(family="Vazirmatn, Tahoma", size=13, color="#e6edf3" if _dark else "#1f2937"),
-                                 yaxis=dict(tickformat=",.0f"), xaxis=dict(title="تاریخ"),
-                                 margin=dict(t=30, b=20, l=10, r=10), hovermode="x unified",
-                                 paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-                                 plot_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-                                 title=dict(text="🇮🇷 ارزش کل به ریال", font=dict(size=14)))
-            st.plotly_chart(fig_irr, use_container_width=True)
+                                 title=dict(text=title, font=dict(size=14)))
+                st.plotly_chart(fig, use_container_width=True)
             fu, lu = timeline["total_usd"].iloc[0], timeline["total_usd"].iloc[-1]
             fi, li = timeline["total_irr"].iloc[0], timeline["total_irr"].iloc[-1]
             g1, g2 = st.columns(2)
-            g1.metric("تغییر (دلاری)", f"${lu:,.2f}", delta=f"{lu-fu:+,.2f}")
-            g2.metric("تغییر (ریالی)", f"{li:,.0f}", delta=f"{li-fi:+,.0f}")
+            g1.metric("تغییر دلاری", f"${lu:,.2f}", delta=f"{lu-fu:+,.2f}")
+            g2.metric("تغییر ریالی", f"{li:,.0f}", delta=f"{li-fi:+,.0f}")
         else:
-            st.info("📊 حداقل دو رکورد لازم است.")
+            st.info("حداقل دو رکورد لازم است.")
         st.subheader("📋 جدول دارایی‌ها")
         disp = df.copy()
         disp["تعداد"] = disp["تعداد"].apply(fmt_num)
@@ -1129,8 +1061,8 @@ elif selected == "journal":
                                        "quantity": q0, "unit_price": p0, "note": note0.strip() or "رکورد اولیه"})
                     data.setdefault("assets", []).append({
                         "id": aid, "name": name.strip(), "icon": init_icon, "color": init_color,
-                        "overview_emoji": "",
-                        "currency": cur, "created_at_gregorian": aid, "created_at_jalali": today_jalali_str(),
+                        "overview_emoji": "", "currency": cur,
+                        "created_at_gregorian": aid, "created_at_jalali": today_jalali_str(),
                         "records": records})
                     st.session_state.data = data
                     save_all(data)
@@ -1140,7 +1072,7 @@ elif selected == "journal":
         st.subheader("📝 لیست دارایی‌ها")
         rate, _ = get_current_usd_rate(data)
         for a in assets:
-            value, usd_val, rec = compute_asset_value(a, rate)
+            value, _, rec = compute_asset_value(a, rate)
             with st.container(border=True):
                 c1, c2, c3, c4, c5 = st.columns([3, 2, 3, 2, 1])
                 c1.markdown(f'**<i class="fa-solid {asset_icon(a)}" style="color:{asset_color(a)};"></i> {a["name"]}**', unsafe_allow_html=True)
@@ -1157,13 +1089,13 @@ elif selected == "journal":
 # ================== صفحه دلار ==================
 elif selected == "usd":
     st.header("💵 نرخ دلار")
-    st.caption(f"📅 امروز: **{today_jalali_str()}**")
+    st.caption(f"📅 {today_jalali_str()}")
     with st.container(border=True):
         st.subheader("➕ ثبت نرخ")
         with st.form("usd_rate_form", clear_on_submit=True):
             c1, c2 = st.columns([2, 3])
             new_rate = c1.number_input("نرخ (ریال)", min_value=0, step=1000, format="%d")
-            note = c2.text_input("توضیح", placeholder="بازار آزاد")
+            note = c2.text_input("توضیح")
             if st.form_submit_button("💾 ثبت", use_container_width=True):
                 if new_rate > 0:
                     now = datetime.now().isoformat()
@@ -1173,7 +1105,6 @@ elif selected == "usd":
                     st.session_state.data = data
                     save_all(data)
                     st.rerun()
-
     rates = data.get("usd_rates", [])
     if rates:
         sorted_r = sorted(rates, key=lambda x: x.get("created_at", ""))
@@ -1201,9 +1132,9 @@ elif selected == "usd":
                 c2.caption(f"📅 {r.get('created_at_jalali', '—')}")
                 c3.caption(r.get("note", "—") or "—")
                 c4.caption(iso_to_jalali(r.get("created_at", ""), with_time=True))
-                if c5.button("✏️", key=f"edit_btn_rate_{r['id']}", help="ویرایش"):
+                if c5.button("✏️", key=f"edit_btn_rate_{r['id']}"):
                     st.session_state[f"edit_open_rate_{r['id']}"] = not st.session_state.get(f"edit_open_rate_{r['id']}", False)
-                if c6.button("🗑️", key=f"delrate_{r['id']}", help="حذف"):
+                if c6.button("🗑️", key=f"delrate_{r['id']}"):
                     data["usd_rates"] = [x for x in data["usd_rates"] if x["id"] != r["id"]]
                     st.session_state.data = data
                     save_all(data)
@@ -1231,6 +1162,7 @@ elif selected == "usd":
                                 bump_version(vk)
                                 save_all(data)
                                 st.rerun()
+
 # ================== صفحه تنظیمات ==================
 elif selected == "settings":
     render_settings_page(data)
@@ -1295,7 +1227,6 @@ elif selected.startswith("asset_"):
                     else:
                         st.error("مقادیر معتبر وارد کنید.")
 
-        # ⬇️⬇️⬇️ تعریف records — فقط یک بار، قبل از هر استفاده ⬇️⬇️⬇️
         records = sorted(asset.get("records", []), key=lambda r: r.get("date_gregorian", ""))
 
         if len(records) >= 2:
