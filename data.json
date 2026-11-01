@@ -41,7 +41,8 @@
         }
       ],
       "icon": "fa-folder",
-      "color": "#3b82f6"
+      "color": "#3b82f6",
+      "overview_emoji": ""
     },
     {
       "id": "2026-10-31T14:46:14.808316",
@@ -68,7 +69,8 @@
         }
       ],
       "icon": "fa-folder",
-      "color": "#3b82f6"
+      "color": "#3b82f6",
+      "overview_emoji": ""
     },
     {
       "id": "2026-10-31T14:49:38.750912",
@@ -95,7 +97,8 @@
         }
       ],
       "icon": "fa-folder",
-      "color": "#3b82f6"
+      "color": "#3b82f6",
+      "overview_emoji": ""
     }
   ],
   "settings": {
@@ -128,8 +131,9 @@
         "size_bytes": 60404,
         "uploaded_at": "2026-11-01T04:41:06.448194"
       }
-    }
+    },
+    "dark_mode": true
   },
-  "last_saved": "2026-11-01T04:43:19.694265",
-  "last_saved_jalali": "1405/08/10 - 04:43"
+  "last_saved": "2026-11-01T04:58:31.318119",
+  "last_saved_jalali": "1405/08/10 - 04:58"
 }
