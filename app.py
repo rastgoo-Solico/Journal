@@ -448,19 +448,59 @@ def _icon_grid_picker(prefix, current, on_save):
     if s:
         q = s.lower()
         icons = [i for i in icons if q in i["label"].lower() or q in i["class"].lower()]
-    display = icons[:120]
-    st.caption(f"**{len(icons)}** یافت شد — نمایش {len(display)}")
+
+    per_page = 48
+    total = len(icons)
+    pages = max(1, (total + per_page - 1) // per_page)
+    pk = f"{prefix}_page"
+    if pk not in st.session_state:
+        st.session_state[pk] = 0
+    if st.session_state[pk] >= pages:
+        st.session_state[pk] = 0
+
+    page = st.session_state[pk]
+    start = page * per_page
+    display = icons[start:start + per_page]
+
+    st.caption(f"**{total}** آیکون — صفحه **{page + 1}** از **{pages}**")
+
     for row in range(0, len(display), 8):
         cols = st.columns(8)
         for j, ic in enumerate(display[row:row + 8]):
             with cols[j]:
-                em = icon_emoji(ic["class"])
-                label = em if em != "📁" else ic["class"].replace("fa-", "")[:5]
-                is_current = (ic["class"] == current)
-                btn_label = f"{'✅ ' if is_current else ''}{label}"
-                if st.button(btn_label, key=f"{prefix}_btn_{ic['class']}", help=ic["class"], use_container_width=True):
+                is_cur = (ic["class"] == current)
+                border = "3px solid #22c55e" if is_cur else "1px solid #e5e7eb"
+                st.markdown(
+                    f'<div style="text-align:center; padding:10px 4px; border:{border}; '
+                    f'border-radius:8px; margin-bottom:4px; background:#f9fafb;">'
+                    f'<i class="fa-solid {ic["class"]}" style="font-size:1.6rem; color:#3b82f6;"></i>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                lbl = "✅ فعلی" if is_cur else "انتخاب"
+                if st.button(lbl, key=f"{prefix}_btn_{ic['class']}",
+                            use_container_width=True, disabled=is_cur):
                     on_save(ic["class"])
                     st.rerun()
+
+    if pages > 1:
+        pc1, pc2, pc3 = st.columns([1, 2, 1])
+        with pc1:
+            if st.button("◀ قبلی", key=f"{prefix}_prev",
+                        use_container_width=True, disabled=(page == 0)):
+                st.session_state[pk] = page - 1
+                st.rerun()
+        with pc2:
+            st.markdown(
+                f'<div style="text-align:center; padding-top:8px; font-weight:600;">'
+                f'صفحه {page + 1} / {pages}</div>',
+                unsafe_allow_html=True,
+            )
+        with pc3:
+            if st.button("بعدی ▶", key=f"{prefix}_next",
+                        use_container_width=True, disabled=(page >= pages - 1)):
+                st.session_state[pk] = page + 1
+                st.rerun()
 
 def _emoji_grid_picker(prefix, current, on_save):
     EMOJIS = ["📁", "🪙", "💎", "👑", "💰", "💵", "💴", "💶", "💷", "🏦",
