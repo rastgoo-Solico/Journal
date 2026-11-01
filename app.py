@@ -55,29 +55,77 @@ FALLBACK_ICONS = [
     {"class": "fa-circle-plus", "label": "Circle Plus", "categories": ["interfaces"]},
 ]
 
-CATEGORY_LABELS_FA = {
-    "money": "💰 پول و مالی", "business": "💼 کسب و کار",
-    "charts-diagrams": "📊 نمودار", "buildings": "🏢 ساختمان",
-    "shopping": "🛒 خرید", "security": "🔒 امنیت",
-    "transportation": "🚗 حمل و نقل", "nature": "🌿 طبیعت",
-    "food-beverage": "🍔 غذا", "education": "🎓 آموزش",
-    "users-people": "👥 افراد", "time": "⏰ زمان",
-    "weather": "☁️ آب و هوا", "medical-health": "🏥 پزشکی",
-    "science": "🔬 علم", "computers": "💻 کامپیوتر",
-    "animals": "🐾 حیوانات", "arrows": "➡️ فلش‌ها",
-    "communication": "💬 ارتباطات", "design": "🎨 طراحی",
-    "files": "📁 فایل‌ها", "interfaces": "🖱️ رابط کاربری",
-    "maps": "🗺️ نقشه", "mathematics": "🔢 ریاضیات",
-    "media-playback": "▶️ رسانه", "music-audio": "🎵 موسیقی",
-    "photography": "📷 عکاسی", "sports-fitness": "⚽ ورزش",
-    "travel-hotel": "✈️ سفر", "energy": "⚡ انرژی",
-    "household": "🏠 خانه", "logistics": "📦 لجستیک",
-    "marketing": "📢 بازاریابی", "shapes": "🔷 اشکال",
-    "text-formatting": "📝 متن", "games": "🎮 بازی",
-    "holiday": "🎉 تعطیلات", "religion": "🕌 مذهب",
-    "political": "🏛️ سیاسی", "charity": "❤️ خیریه",
-    "__uncategorized__": "📌 سایر",
+CATEGORY_KEYWORDS = {
+    "money": ["coin", "dollar", "money", "wallet", "bank", "cash", "currency",
+              "credit-card", "payment", "receipt", "invoice", "sack", "piggy",
+              "vault", "tax", "donate", "hand-holding", "tip", "price-tag",
+              "bitcoin", "ethereum", "euro", "sterling", "yen", "rupee",
+              "ruble", "won", "lira", "peso", "shekel", "tenge",
+              "exchange", "money-bill", "money-check"],
+    "chart": ["chart", "graph", "trend", "analytics", "presentation-chart",
+              "arrow-trend", "magnifying-glass-chart", "square-poll",
+              "ranking", "signal", "wifi", "spinner", "percent"],
+    "gems": ["gem", "crown", "diamond", "gift", "award", "medal", "star",
+             "trophy", "ribbon", "certificate"],
+    "building": ["building", "house", "home", "office", "factory", "industry",
+                 "warehouse", "store", "shop", "landmark", "church", "mosque",
+                 "hotel", "school", "hospital", "motel", "tent", "campground"],
+    "transport": ["car", "truck", "plane", "ship", "train", "bus", "bike",
+                  "motorcycle", "taxi", "rocket", "helicopter", "boat",
+                  "tram", "subway", "van", "tractor", "trailer", "wheelchair"],
+    "goods": ["box", "package", "shipping", "cart", "basket", "bag-shopping",
+              "boxes", "cubes", "cube"],
+    "business": ["briefcase", "handshake", "user-tie", "file-invoice",
+                 "file-contract", "clipboard-check", "check-double"],
+    "file": ["folder", "file", "save", "download", "upload", "disk",
+             "document", "paper", "clipboard", "notebook", "book", "bookmark",
+             "newspaper", "scroll", "envelope", "mail"],
+    "user": ["user", "person", "people", "group", "team", "users"],
+    "system": ["gear", "cog", "tool", "wrench", "hammer", "screwdriver",
+               "key", "lock", "shield", "bell", "power-off",
+               "right-from-bracket", "arrow-right-from-bracket",
+               "ellipsis", "bars"],
+    "media": ["camera", "photo", "image", "video", "music", "headphone",
+              "play", "pause", "stop", "record", "microphone", "film",
+              "compact-disc", "volume", "speaker"],
+    "symbol": ["circle-check", "circle-xmark", "circle-plus", "circle-minus",
+               "circle", "square", "triangle", "heart", "plus", "minus",
+               "equals", "question", "info", "exclamation", "ban", "check"],
+    "time": ["clock", "calendar", "time", "hourglass", "stopwatch", "timer",
+             "watch"],
+    "nature": ["fire", "bolt", "sun", "leaf", "tree", "seedling", "water",
+               "droplet", "wind", "snow", "cloud", "moon", "snowflake",
+               "mountain"],
 }
+
+CATEGORY_LABELS = {
+    "money": "💰 پول و ارز",
+    "chart": "📊 سرمایه و نمودار",
+    "gems": "🥇 طلا و جواهر",
+    "building": "🏢 ملک و ساختمان",
+    "transport": "🚗 حمل و نقل",
+    "goods": "📦 کالا",
+    "business": "💼 کسب و کار",
+    "file": "📁 فایل و سند",
+    "user": "👤 کاربر",
+    "system": "⚙️ تنظیمات",
+    "media": "🎬 رسانه",
+    "symbol": "🔷 نماد",
+    "time": "⏰ زمان",
+    "nature": "🌿 طبیعت",
+    "other": "📌 سایر",
+}
+
+def categorize_icon(icon_class, label):
+    """دسته‌بندی معنادار بر اساس کاربرد مالی"""
+    text = f"{icon_class} {label}".lower()
+    cats = []
+    for cat, keywords in CATEGORY_KEYWORDS.items():
+        for kw in keywords:
+            if kw in text:
+                cats.append(cat)
+                break
+    return cats or ["other"]
 
 # ================== تنظیمات صفحه ==================
 st.set_page_config(page_title="داشبورد مالی", layout="wide", initial_sidebar_state="expanded")
@@ -95,7 +143,7 @@ AUTH_TOKEN = get_auth_token()
 
 # ================== آیکون‌ها ==================
 @st.cache_data(ttl=86400, show_spinner=False)
-def load_fa_icons(cache_v="v6"):
+def load_fa_icons(cache_v="v7"):
     try:
         r = requests.get(
             "https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/metadata/icons.json",
@@ -107,28 +155,25 @@ def load_fa_icons(cache_v="v6"):
             for name, info in meta.items():
                 if "solid" not in info.get("free", []):
                     continue
-                cats = info.get("categories", []) or ["__uncategorized__"]
+                label = info.get("label", name)
                 icons.append({
                     "class": f"fa-{name}",
-                    "label": info.get("label", name),
-                    "categories": cats,
+                    "label": label,
+                    "categories": categorize_icon(f"fa-{name}", label),
                 })
             if icons:
                 return sorted(icons, key=lambda x: x["label"].lower())
     except Exception:
         pass
-    return FALLBACK_ICONS
-
-def icon_emoji(fa_class):
-    _EMOJI = {
-        "fa-folder": "📁", "fa-coins": "🪙", "fa-wallet": "👛", "fa-dollar-sign": "💲",
-        "fa-building-columns": "🏦", "fa-gem": "💎", "fa-crown": "👑", "fa-house": "🏠",
-        "fa-car": "🚗", "fa-chart-line": "📈", "fa-chart-pie": "📊", "fa-bitcoin-sign": "₿",
-        "fa-briefcase": "💼", "fa-store": "🏪", "fa-sack-dollar": "💰", "fa-fire": "🔥",
-        "fa-bolt": "⚡", "fa-box": "📦", "fa-gear": "⚙️", "fa-circle-plus": "➕",
-    }
-    return _EMOJI.get(fa_class, "📁")
-
+    # fallback: دسته‌بندی معنادار روی fallback
+    out = []
+    for ic in FALLBACK_ICONS:
+        out.append({
+            "class": ic["class"],
+            "label": ic["label"],
+            "categories": categorize_icon(ic["class"], ic["label"]),
+        })
+    return out
 # ================== توابع تاریخ ==================
 def today_jalali_str():
     return jdatetime.date.today().strftime("%Y/%m/%d")
@@ -616,23 +661,21 @@ assets = data.get("assets", [])
 
 # ================== سایدبار ==================
 with st.sidebar:
-    c_date, c_mode = st.columns([3, 1])
+    c_date, c_mode, c_logout = st.columns([3, 1, 1])
     with c_date:
         st.markdown(f"### 🗓️ {today_jalali_str()}")
     with c_mode:
-        if st.button("☀️" if _dark else "🌙", key="dark_toggle_btn", help="حالت روز/شب", use_container_width=True):
+        if st.button("☀️" if _dark else "🌙", key="dark_toggle_btn", help="روز/شب", use_container_width=True):
             data["settings"]["dark_mode"] = not _dark
             st.session_state.data = data
             save_all(data)
             st.rerun()
-    if st.button("🚪 خروج", use_container_width=True, key="logout_btn"):
-        st.session_state.authenticated = False
-        st.session_state.pop("data", None)
-        st.query_params.clear()
-        st.rerun()
-    if st.button("🔄 بازخوانی آیکون‌ها", use_container_width=True, key="reload_icons_btn"):
-        st.cache_data.clear()
-        st.rerun()
+    with c_logout:
+        if st.button("🚪", key="logout_btn", help="خروج", use_container_width=True):
+            st.session_state.authenticated = False
+            st.session_state.pop("data", None)
+            st.query_params.clear()
+            st.rerun()
     st.divider()
 
     rate, rate_date = get_current_usd_rate(data)
