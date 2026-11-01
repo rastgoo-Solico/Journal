@@ -585,6 +585,18 @@ data = st.session_state.data
 data.setdefault("assets", [])
 data.setdefault("usd_rates", [])
 
+# حذف دارایی‌های با id تکراری (در صورت خرابی داده)
+_seen_ids = set()
+_unique = []
+for _a in data.get("assets", []):
+    if _a.get("id") and _a["id"] not in _seen_ids:
+        _seen_ids.add(_a["id"])
+        _unique.append(_a)
+if len(_unique) != len(data.get("assets", [])):
+    st.warning(f"⚠️ {len(data['assets']) - len(_unique)} دارایی تکراری حذف شد.")
+    data["assets"] = _unique
+    save_local_file(data)
+    
 inject_app(data)
 _dark = get_settings(data)["dark_mode"]
 assets = data.get("assets", [])
