@@ -46,26 +46,20 @@ FALLBACK_ICONS = [
 ]
 
 @st.cache_data(ttl=86400, show_spinner=False)
+@st.cache_data(ttl=86400, show_spinner=False)
 def load_fa_icons():
     try:
         r = requests.get("https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/metadata/icons.json", timeout=15)
         if r.status_code == 200:
             meta = r.json()
-            icons = [{"class": f"fa-{name}", "label": info.get("label", name)}
+            icons = [{"class": f"fa-{name}", "label": info.get("label", name),
+                      "categories": info.get("categories", [])}
                      for name, info in meta.items() if "solid" in info.get("free", [])]
             if icons:
                 return sorted(icons, key=lambda x: x["label"].lower())
     except Exception:
         pass
-    return FALLBACK_ICONS
-
-EMOJI_FALLBACK = {
-    "fa-folder": "📁", "fa-coins": "🪙", "fa-wallet": "👛", "fa-dollar-sign": "💲",
-    "fa-building-columns": "🏦", "fa-gem": "💎", "fa-crown": "👑", "fa-house": "🏠",
-    "fa-car": "🚗", "fa-chart-line": "📈", "fa-chart-pie": "📊", "fa-bitcoin-sign": "₿",
-    "fa-briefcase": "💼", "fa-store": "🏪", "fa-sack-dollar": "💰", "fa-fire": "🔥",
-    "fa-bolt": "⚡", "fa-box": "📦", "fa-gear": "⚙️", "fa-circle-plus": "➕",
-}
+    return [{"class": x["class"], "label": x["label"], "categories": []} for x in FALLBACK_ICONS]
 
 def icon_emoji(fa_class):
     return EMOJI_FALLBACK.get(fa_class, "📁")
@@ -442,27 +436,76 @@ def render_html_table(df, dark=False):
     st.markdown(html, unsafe_allow_html=True)
 
 # ================== گرید آیکون و ایموجی ==================
+CATEGORY_LABELS_FA = {
+    "money": "💰 پول و مالی", "business": "💼 کسب و کار",
+    "charts-diagrams": "📊 نمودار", "buildings": "🏢 ساختمان",
+    "shopping": "🛒 خرید", "security": "🔒 امنیت",
+    "transportation": "🚗 حمل و نقل", "nature": "🌿 طبیعت",
+    "food-beverage": "🍔 غذا و نوشیدنی", "education": "🎓 آموزش",
+    "users-people": "👥 افراد", "time": "⏰ زمان",
+    "weather": "☁️ آب و هوا", "medical-health": "🏥 پزشکی",
+    "science": "🔬 علم", "computers": "💻 کامپیوتر",
+    "animals": "🐾 حیوانات", "arrows": "➡️ فلش‌ها",
+    "communication": "💬 ارتباطات", "design": "🎨 طراحی",
+    "files": "📁 فایل‌ها", "interfaces": "🖱️ رابط کاربری",
+    "maps": "🗺️ نقشه", "mathematics": "🔢 ریاضیات",
+    "media-playback": "▶️ رسانه", "music-audio": "🎵 موسیقی",
+    "photography": "📷 عکاسی", "sports-fitness": "⚽ ورزش",
+    "travel-hotel": "✈️ سفر", "energy": "⚡ انرژی",
+    "household": "🏠 خانه", "logistics": "📦 لجستیک",
+    "marketing": "📢 بازاریابی", "shapes": "🔷 اشکال",
+    "text-formatting": "📝 متن", "games": "🎮 بازی",
+    "holiday": "🎉 تعطیلات", "religion": "🕌 مذهب",
+    "political": "🏛️ سیاسی", "charity": "❤️ خیریه",
+    "accessibility": "♿ دسترسی‌پذیری", "construction": "🏗️ ساخت",
+    "fruits-vegetables": "🍎 میوه", "hands": "👋 دست‌ها",
+}
 def _icon_grid_picker(prefix, current, on_save):
     icons = load_fa_icons()
-    s = st.text_input("🔍", key=f"{prefix}_search", placeholder="جستجوی آیکون (مثلاً: coins, chart)...", label_visibility="collapsed")
+
+    # استخراج دسته‌های موجود
+    all_cats = set()
+    for ic in icons:
+        for c in ic.get("categories", []):
+            all_cats.add(c)
+    cat_options = ["__all__"] + sorted(all_cats)
+
+    c1, c2 = st.columns([2, 3])
+    cat = c1.selectbox(
+        "📂 دسته",
+        cat_options,
+        format_func=lambda x: "🌐 همه" if x == "__all__" else CATEGORY_LABELS_FA.get(x, x),
+        key=f"{prefix}_cat",
+    )
+    s = c2.text_input("🔍", key=f"{prefix}_search",
+                     placeholder="جستجو در آیکون‌ها...", label_visibility="collapsed")
+
+    filtered = icons if cat == "__all__" else [i for i in icons if cat in i.get("categories", [])]
     if s:
         q = s.lower()
-        icons = [i for i in icons if q in i["label"].lower() or q in i["class"].lower()]
+        filtered = [i for i in filtered if q in i["label"].lower() or q in i["class"].lower()]
 
     per_page = 48
-    total = len(icons)
+    total = len(filtered)
     pages = max(1, (total + per_page - 1) // per_page)
     pk = f"{prefix}_page"
-    if pk not in st.session_state:
+    catk = f"{prefix}_cat_prev"
+
+    # با تغییر دسته، به صفحه ۱ برگرد
+    if catk not in st.session_state or st.session_state[catk] != cat:
         st.session_state[pk] = 0
-    if st.session_state[pk] >= pages:
+        st.session_state[catk] = cat
+    if st.session_state.get(pk, 0) >= pages:
         st.session_state[pk] = 0
 
-    page = st.session_state[pk]
-    start = page * per_page
-    display = icons[start:start + per_page]
+    page = st.session_state.get(pk, 0)
+    display = filtered[page * per_page:(page + 1) * per_page]
 
     st.caption(f"**{total}** آیکون — صفحه **{page + 1}** از **{pages}**")
+
+    if total == 0:
+        st.info("آیکونی یافت نشد.")
+        return
 
     for row in range(0, len(display), 8):
         cols = st.columns(8)
@@ -477,7 +520,7 @@ def _icon_grid_picker(prefix, current, on_save):
                     f'</div>',
                     unsafe_allow_html=True,
                 )
-                lbl = "✅ فعلی" if is_cur else "انتخاب"
+                lbl = "✅" if is_cur else "انتخاب"
                 if st.button(lbl, key=f"{prefix}_btn_{ic['class']}",
                             use_container_width=True, disabled=is_cur):
                     on_save(ic["class"])
@@ -501,7 +544,6 @@ def _icon_grid_picker(prefix, current, on_save):
                         use_container_width=True, disabled=(page >= pages - 1)):
                 st.session_state[pk] = page + 1
                 st.rerun()
-
 def _emoji_grid_picker(prefix, current, on_save):
     EMOJIS = ["📁", "🪙", "💎", "👑", "💰", "💵", "💴", "💶", "💷", "🏦",
               "🏠", "🏢", "🚗", "🚚", "📈", "📊", "📉", "⚡", "🔥", "💧",
@@ -1114,41 +1156,44 @@ elif selected == "usd":
                          plot_bgcolor="rgba(0,0,0,0)" if _dark else "white")
         st.plotly_chart(fig, use_container_width=True)
         st.subheader("📋 تاریخچه")
-        for r in reversed(sorted_r):
-            with st.container(border=True):
-                c1, c2, c3, c4, c5 = st.columns([2, 2, 3, 3, 1])
-                c1.markdown(f"**{r['rate']:,.0f} ریال**")
-                c2.caption(f"📅 {r.get('created_at_jalali', '—')}")
-                c3.caption(r.get("note", "—") or "—")
-                c4.caption(iso_to_jalali(r.get("created_at", ""), with_time=True))
-                if c5.button("🗑️", key=f"delrate_{r['id']}"):
-                    data["usd_rates"] = [x for x in data["usd_rates"] if x["id"] != r["id"]]
-                    st.session_state.data = data
-                    save_all(data)
-                    st.rerun()
-                vk = f"v_rate_{r['id']}"
-                fk = f"edit_rate_{r['id']}_v{get_version(vk)}"
-                with st.expander("✏️ ویرایش"):
-                    with st.form(fk):
-                        ec1, ec2 = st.columns([2, 3])
-                        er_date = ec1.text_input("تاریخ", value=r.get("created_at_jalali", today_jalali_str()))
-                        er_rate = ec2.number_input("نرخ", value=int(r["rate"]), min_value=1, step=1000, format="%d")
-                        er_note = st.text_input("توضیح", value=r.get("note", ""))
-                        if st.form_submit_button("💾 ذخیره", use_container_width=True):
-                            jd = parse_jalali(er_date)
-                            if jd and er_rate > 0:
-                                tp = r["created_at"][11:16] if len(r.get("created_at", "")) >= 16 else "00:00"
-                                giso = jalali_to_gregorian_iso(jd, tp)
-                                for i, x in enumerate(data["usd_rates"]):
-                                    if x["id"] == r["id"]:
-                                        data["usd_rates"][i] = {"id": r["id"], "rate": er_rate, "note": er_note.strip(),
-                                                               "created_at": giso, "created_at_jalali": jd.strftime("%Y/%m/%d")}
-                                        break
-                                st.session_state.data = data
-                                bump_version(vk)
-                                save_all(data)
-                                st.rerun()
+for r in reversed(sorted_r):
+    with st.container(border=True):
+        c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 3, 3, 1, 1])
+        c1.markdown(f"**{r['rate']:,.0f} ریال**")
+        c2.caption(f"📅 {r.get('created_at_jalali', '—')}")
+        c3.caption(r.get("note", "—") or "—")
+        c4.caption(iso_to_jalali(r.get("created_at", ""), with_time=True))
+        if c5.button("✏️", key=f"edit_btn_rate_{r['id']}", help="ویرایش"):
+            st.session_state[f"edit_open_rate_{r['id']}"] = not st.session_state.get(f"edit_open_rate_{r['id']}", False)
+        if c6.button("🗑️", key=f"delrate_{r['id']}", help="حذف"):
+            data["usd_rates"] = [x for x in data["usd_rates"] if x["id"] != r["id"]]
+            st.session_state.data = data
+            save_all(data)
+            st.rerun()
 
+        if st.session_state.get(f"edit_open_rate_{r['id']}", False):
+            vk = f"v_rate_{r['id']}"
+            fk = f"edit_rate_{r['id']}_v{get_version(vk)}"
+            with st.form(fk):
+                ec1, ec2 = st.columns([2, 3])
+                er_date = ec1.text_input("تاریخ", value=r.get("created_at_jalali", today_jalali_str()))
+                er_rate = ec2.number_input("نرخ", value=int(r["rate"]), min_value=1, step=1000, format="%d")
+                er_note = st.text_input("توضیح", value=r.get("note", ""))
+                if st.form_submit_button("💾 ذخیره", use_container_width=True):
+                    jd = parse_jalali(er_date)
+                    if jd and er_rate > 0:
+                        tp = r["created_at"][11:16] if len(r.get("created_at", "")) >= 16 else "00:00"
+                        giso = jalali_to_gregorian_iso(jd, tp)
+                        for i, x in enumerate(data["usd_rates"]):
+                            if x["id"] == r["id"]:
+                                data["usd_rates"][i] = {"id": r["id"], "rate": er_rate, "note": er_note.strip(),
+                                                       "created_at": giso, "created_at_jalali": jd.strftime("%Y/%m/%d")}
+                                break
+                        st.session_state.data = data
+                        st.session_state[f"edit_open_rate_{r['id']}"] = False
+                        bump_version(vk)
+                        save_all(data)
+                        st.rerun()
 # ================== صفحه تنظیمات ==================
 elif selected == "settings":
     render_settings_page(data)
@@ -1164,7 +1209,6 @@ elif selected.startswith("asset_"):
         value, usd_val, rec = compute_asset_value(asset, rate)
         st.markdown(f'<h1 style="text-align:right;"><i class="fa-solid {asset_icon(asset)}" style="color:{asset_color(asset)};"></i> {asset["name"]}</h1>', unsafe_allow_html=True)
         st.caption(f"ارز: **{currency_label(asset['currency'])}** | ایجاد: {asset.get('created_at_jalali', '—')}")
-        st.caption("💡 آیکون/رنگ از «⚙️ تنظیمات → 📦 آیکون دارایی» و ایموجی از «😀 ایموجی نمای کلی»")
         avk = f"v_asset_{asset['id']}"
         afk = f"edit_asset_{asset['id']}_v{get_version(avk)}"
         with st.expander("⚙️ ویرایش نام و ارز"):
@@ -1223,44 +1267,48 @@ elif selected.startswith("asset_"):
                              plot_bgcolor="rgba(0,0,0,0)" if _dark else "white")
             st.plotly_chart(fig, use_container_width=True)
         st.subheader("📋 تاریخچه رکوردها")
-        for r in reversed(records):
-            with st.container(border=True):
-                c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 3, 3, 2, 1])
-                c1.markdown(f"**📅 {r['date_jalali']}**")
-                c2.caption(f"تعداد: {fmt_num(r['quantity'])}")
-                c3.caption(f"قیمت: {fmt_num(r['unit_price'])} {currency_label(asset['currency'])}")
-                val = r['quantity'] * r['unit_price']
-                c4.markdown(f"**{fmt_num(val)} {currency_label(asset['currency'])}**")
-                c5.caption(r.get("note", "—") or "—")
-                if c6.button("🗑️", key=f"del_rec_{r['id']}"):
-                    asset["records"] = [x for x in asset["records"] if x["id"] != r["id"]]
-                    st.session_state.data = data
-                    save_all(data)
-                    st.rerun()
-                rvk = f"v_rec_{r['id']}"
-                rfk = f"edit_rec_{r['id']}_v{get_version(rvk)}"
-                with st.expander("✏️ ویرایش"):
-                    with st.form(rfk):
-                        ec1, ec2, ec3 = st.columns([2, 2, 2])
-                        ed_date = ec1.text_input("تاریخ", value=r["date_jalali"])
-                        ed_qty = ec2.number_input("تعداد", value=float(r["quantity"]), min_value=0.0, format="%.4f", step=1.0)
-                        ed_price = ec3.number_input(f"قیمت", value=float(r["unit_price"]), min_value=0.0, format="%.2f", step=1000.0)
-                        ed_note = st.text_input("توضیح", value=r.get("note", ""))
-                        if st.form_submit_button("💾 ذخیره", use_container_width=True):
-                            jd = parse_jalali(ed_date)
-                            if jd and ed_qty > 0 and ed_price > 0:
-                                tp = r["date_gregorian"][11:16] if len(r.get("date_gregorian", "")) >= 16 else "00:00"
-                                giso = jalali_to_gregorian_iso(jd, tp)
-                                for i, x in enumerate(asset["records"]):
-                                    if x["id"] == r["id"]:
-                                        asset["records"][i] = {"id": r["id"], "date_gregorian": giso,
-                                                              "date_jalali": jd.strftime("%Y/%m/%d"),
-                                                              "quantity": ed_qty, "unit_price": ed_price, "note": ed_note.strip()}
-                                        break
-                                st.session_state.data = data
-                                bump_version(rvk)
-                                save_all(data)
-                                st.rerun()
+for r in reversed(records):
+    with st.container(border=True):
+        c1, c2, c3, c4, c5, c6, c7 = st.columns([2, 2, 3, 3, 2, 1, 1])
+        c1.markdown(f"**📅 {r['date_jalali']}**")
+        c2.caption(f"تعداد: {fmt_num(r['quantity'])}")
+        c3.caption(f"قیمت: {fmt_num(r['unit_price'])} {currency_label(asset['currency'])}")
+        val = r['quantity'] * r['unit_price']
+        c4.markdown(f"**{fmt_num(val)} {currency_label(asset['currency'])}**")
+        c5.caption(r.get("note", "—") or "—")
+        if c6.button("✏️", key=f"edit_btn_rec_{r['id']}", help="ویرایش"):
+            st.session_state[f"edit_open_rec_{r['id']}"] = not st.session_state.get(f"edit_open_rec_{r['id']}", False)
+        if c7.button("🗑️", key=f"del_rec_{r['id']}", help="حذف"):
+            asset["records"] = [x for x in asset["records"] if x["id"] != r["id"]]
+            st.session_state.data = data
+            save_all(data)
+            st.rerun()
+
+        if st.session_state.get(f"edit_open_rec_{r['id']}", False):
+            rvk = f"v_rec_{r['id']}"
+            rfk = f"edit_rec_{r['id']}_v{get_version(rvk)}"
+            with st.form(rfk):
+                ec1, ec2, ec3 = st.columns([2, 2, 2])
+                ed_date = ec1.text_input("تاریخ", value=r["date_jalali"])
+                ed_qty = ec2.number_input("تعداد", value=float(r["quantity"]), min_value=0.0, format="%.4f", step=1.0)
+                ed_price = ec3.number_input(f"قیمت", value=float(r["unit_price"]), min_value=0.0, format="%.2f", step=1000.0)
+                ed_note = st.text_input("توضیح", value=r.get("note", ""))
+                if st.form_submit_button("💾 ذخیره", use_container_width=True):
+                    jd = parse_jalali(ed_date)
+                    if jd and ed_qty > 0 and ed_price > 0:
+                        tp = r["date_gregorian"][11:16] if len(r.get("date_gregorian", "")) >= 16 else "00:00"
+                        giso = jalali_to_gregorian_iso(jd, tp)
+                        for i, x in enumerate(asset["records"]):
+                            if x["id"] == r["id"]:
+                                asset["records"][i] = {"id": r["id"], "date_gregorian": giso,
+                                                      "date_jalali": jd.strftime("%Y/%m/%d"),
+                                                      "quantity": ed_qty, "unit_price": ed_price, "note": ed_note.strip()}
+                                break
+                        st.session_state.data = data
+                        st.session_state[f"edit_open_rec_{r['id']}"] = False
+                        bump_version(rvk)
+                        save_all(data)
+                        st.rerun()
         st.divider()
         with st.expander("⚠️ حذف کل دارایی"):
             ok = st.checkbox("مطمئنم", key=f"confirm_del_{asset['id']}")
