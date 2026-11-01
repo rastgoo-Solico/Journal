@@ -15,7 +15,7 @@ from styles import FONTS, inject_login, inject_app
 # ================== تنظیمات پایه ==================
 st.set_page_config(page_title="داشبورد مالی", layout="wide", initial_sidebar_state="expanded")
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
-APP_PASSWORD = st.secrets.get("APP_PASSWORD") or "S@mnet11970"
+APP_PASSWORD = st.secrets.get("APP_PASSWORD")
 GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
 GITHUB_REPO = st.secrets.get("GITHUB_REPO", "")
 GITHUB_FILE_PATH = "data.json"
