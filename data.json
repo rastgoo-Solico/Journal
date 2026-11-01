@@ -109,6 +109,14 @@
           "quantity": 12150000000.0,
           "unit_price": 1.0,
           "note": ""
+        },
+        {
+          "id": "2026-11-01T08:01:16.283134",
+          "date_gregorian": "2026-11-01T08:01:00",
+          "date_jalali": "1405/08/10",
+          "quantity": 12150000000.0,
+          "unit_price": 1.0,
+          "note": ""
         }
       ],
       "icon": "fa-folder",
@@ -139,6 +147,6 @@
     "custom_fonts": {},
     "dark_mode": false
   },
-  "last_saved": "2026-11-01T08:00:59.788435",
-  "last_saved_jalali": "1405/08/10 - 08:00"
+  "last_saved": "2026-11-01T08:01:16.283214",
+  "last_saved_jalali": "1405/08/10 - 08:01"
 }
