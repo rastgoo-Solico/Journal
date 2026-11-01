@@ -10,7 +10,6 @@ import hashlib
 from datetime import datetime
 import jdatetime
 
-# ✅ ماژول استایل جداگانه
 from styles import FONTS, inject_login, inject_app
 
 # ================== تنظیمات پایه ==================
@@ -123,7 +122,6 @@ if not st.session_state.authenticated:
         st.session_state.authenticated = True
 
 if not st.session_state.authenticated:
-    # ✅ CSS صفحه لاگین
     inject_login()
     st.markdown("<div style='height: 6vh;'></div>", unsafe_allow_html=True)
     col_l, col_c, col_r = st.columns([1, 2, 1])
@@ -451,9 +449,7 @@ data = st.session_state.data
 data.setdefault("assets", [])
 data.setdefault("usd_rates", [])
 
-# ✅ CSS کامل — فونت، فونت‌های سفارشی و dark mode
 inject_app(data)
-
 _dark = get_settings(data)["dark_mode"]
 
 # ================== سایدبار ==================
@@ -525,7 +521,7 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"فایل معتبر نیست: {e}")
 
-# ================== ناوبری ==================
+# ================== ✅ ناوبری با نسخه‌بندی (رفع خطای StreamlitWidgetAlreadyInstantiatedError) ==================
 assets = data.get("assets", [])
 nav_options = ["overview", "journal", "usd"] + [f"asset_{a['id']}" for a in assets] + ["settings"]
 
@@ -538,11 +534,23 @@ nav_labels = {
 for a in assets:
     nav_labels[f"asset_{a['id']}"] = f"{asset_overview_emoji(a)} {a['name']}"
 
+# نسخه شمار برای ویجت ناوبری
+if "nav_version" not in st.session_state:
+    st.session_state.nav_version = 0
+
+# pending_nav → نسخه جدید بساز تا ویجت با کلید تازه بازسازی شود
 if "pending_nav" in st.session_state:
-    st.session_state.nav_tab = st.session_state.pending_nav
+    pending = st.session_state.pending_nav
     del st.session_state.pending_nav
-if "nav_tab" not in st.session_state or st.session_state.nav_tab not in nav_options:
-    st.session_state.nav_tab = "overview"
+    if pending in nav_options:
+        st.session_state.nav_version += 1
+        st.session_state[f"nav_pills_v{st.session_state.nav_version}"] = pending
+
+_widget_key = f"nav_pills_v{st.session_state.nav_version}"
+if _widget_key not in st.session_state:
+    st.session_state[_widget_key] = "overview"
+if st.session_state[_widget_key] not in nav_options:
+    st.session_state[_widget_key] = "overview"
 
 if hasattr(st, "pills"):
     selected = st.pills(
@@ -551,15 +559,21 @@ if hasattr(st, "pills"):
         format_func=lambda x: nav_labels.get(x, x),
         selection_mode="single",
         label_visibility="collapsed",
-        key="nav_tab",
-        default=st.session_state.nav_tab,
+        key=_widget_key,
     )
     if selected is None:
-        selected = st.session_state.nav_tab
-    st.session_state.nav_tab = selected
+        selected = st.session_state[_widget_key]
 else:
-    selected = st.radio("ناوبری", options=nav_options, format_func=lambda x: nav_labels.get(x, x),
-                       horizontal=True, label_visibility="collapsed", key="nav_tab_fallback")
+    selected = st.radio(
+        "ناوبری",
+        options=nav_options,
+        format_func=lambda x: nav_labels.get(x, x),
+        horizontal=True,
+        label_visibility="collapsed",
+        key=_widget_key + "_radio",
+    )
+    if selected is None:
+        selected = "overview"
 
 # ================== صفحه تنظیمات ==================
 def render_settings_page(data):
