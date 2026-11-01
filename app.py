@@ -1331,11 +1331,12 @@ for r in reversed(records):
                         save_all(data)
                         st.rerun()
         st.divider()
-        with st.expander("⚠️ حذف کل دارایی"):
-            ok = st.checkbox("مطمئنم", key=f"confirm_del_{asset['id']}")
-            if st.button("🗑️ حذف", disabled=not ok, key=f"del_btn_{asset['id']}"):
-                data["assets"] = [x for x in data["assets"] if x["id"] != asset["id"]]
-                st.session_state.data = data
-                save_all(data)
-                st.session_state.pending_nav = "overview"
-                st.rerun()
+with st.expander("⚠️ حذف کل دارایی"):
+    _idx = next((i for i, x in enumerate(data["assets"]) if x["id"] == asset["id"]), 0)
+    ok = st.checkbox("مطمئنم", key=f"confirm_del_{asset['id']}_{_idx}")
+    if st.button("🗑️ حذف", disabled=not ok, key=f"del_btn_{asset['id']}_{_idx}"):
+        data["assets"] = [x for x in data["assets"] if x["id"] != asset["id"]]
+        st.session_state.data = data
+        save_all(data)
+        st.session_state.pending_nav = "overview"
+        st.rerun()
