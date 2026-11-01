@@ -70,7 +70,7 @@
       ],
       "icon": "fa-folder",
       "color": "#3b82f6",
-      "overview_emoji": ""
+      "overview_emoji": "💎"
     },
     {
       "id": "2026-10-31T14:49:38.750912",
@@ -134,6 +134,6 @@
     },
     "dark_mode": false
   },
-  "last_saved": "2026-11-01T05:20:27.474481",
+  "last_saved": "2026-11-01T05:20:46.340452",
   "last_saved_jalali": "1405/08/10 - 05:20"
 }
