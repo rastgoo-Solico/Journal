@@ -1,0 +1,124 @@
+{
+  "usd_rates": [
+    {
+      "id": "2026-10-31T14:15:35.468250",
+      "rate": 2710000,
+      "note": "Nobitex",
+      "created_at": "2026-10-31T14:15:00",
+      "created_at_jalali": "1405/08/09"
+    },
+    {
+      "id": "2026-10-31T16:19:23.080743",
+      "rate": 2720000,
+      "note": "Nobitex",
+      "created_at": "2026-10-30T16:19:00",
+      "created_at_jalali": "1405/08/08"
+    }
+  ],
+  "assets": [
+    {
+      "id": "2026-10-31T14:35:17.516629",
+      "name": "وبملت",
+      "currency": "IRR",
+      "created_at_gregorian": "2026-10-31T14:35:17.516629",
+      "created_at_jalali": "1405/08/09",
+      "records": [
+        {
+          "id": "2026-10-31T14:35:17.516629_r0",
+          "date_gregorian": "2026-10-31T14:35:00",
+          "date_jalali": "1405/08/09",
+          "quantity": 2100000.0,
+          "unit_price": 1379.0,
+          "note": "رکورد اولیه"
+        },
+        {
+          "id": "2026-10-31T16:21:57.396396",
+          "date_gregorian": "2026-10-30T16:21:00",
+          "date_jalali": "1405/08/08",
+          "quantity": 2100000.0,
+          "unit_price": 1430.0,
+          "note": ""
+        }
+      ],
+      "icon": "fa-folder",
+      "color": "#3b82f6"
+    },
+    {
+      "id": "2026-10-31T14:46:14.808316",
+      "name": "عسکه",
+      "currency": "IRR",
+      "created_at_gregorian": "2026-10-31T14:46:14.808316",
+      "created_at_jalali": "1405/08/09",
+      "records": [
+        {
+          "id": "2026-10-31T14:46:14.808316_r0",
+          "date_gregorian": "2026-10-31T14:46:00",
+          "date_jalali": "1405/08/09",
+          "quantity": 3.25,
+          "unit_price": 2549650000.0,
+          "note": "رکورد اولیه"
+        },
+        {
+          "id": "2026-10-31T16:23:33.644943",
+          "date_gregorian": "2026-10-30T16:23:00",
+          "date_jalali": "1405/08/08",
+          "quantity": 3.25,
+          "unit_price": 2650000000.0,
+          "note": ""
+        }
+      ],
+      "icon": "fa-folder",
+      "color": "#3b82f6"
+    },
+    {
+      "id": "2026-10-31T14:49:38.750912",
+      "name": "ریال",
+      "currency": "IRR",
+      "created_at_gregorian": "2026-10-31T14:49:38.750912",
+      "created_at_jalali": "1405/08/09",
+      "records": [
+        {
+          "id": "2026-10-31T14:49:38.750912_r0",
+          "date_gregorian": "2026-10-31T14:49:00",
+          "date_jalali": "1405/08/09",
+          "quantity": 8150000000.0,
+          "unit_price": 1.0,
+          "note": "رکورد اولیه"
+        },
+        {
+          "id": "2026-10-31T16:24:29.731732",
+          "date_gregorian": "2026-10-30T16:24:00",
+          "date_jalali": "1405/08/08",
+          "quantity": 8150000000.0,
+          "unit_price": 1.0,
+          "note": ""
+        }
+      ],
+      "icon": "fa-folder",
+      "color": "#3b82f6"
+    }
+  ],
+  "settings": {
+    "font": "vazirmatn",
+    "nav_icons": {
+      "overview": {
+        "icon": "fa-chart-pie",
+        "color": "#3b82f6"
+      },
+      "journal": {
+        "icon": "fa-circle-plus",
+        "color": "#10b981"
+      },
+      "usd": {
+        "icon": "fa-dollar-sign",
+        "color": "#f59e0b"
+      },
+      "settings": {
+        "icon": "fa-gear",
+        "color": "#6b7280"
+      }
+    }
+  },
+  "last_saved": "2026-11-01T04:25:52.452306",
+  "last_saved_jalali": "1405/08/10 - 04:25"
+}
