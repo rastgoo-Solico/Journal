@@ -61,6 +61,14 @@ def load_fa_icons():
         pass
     return [{"class": x["class"], "label": x["label"], "categories": []} for x in FALLBACK_ICONS]
 
+EMOJI_FALLBACK = {
+    "fa-folder": "📁", "fa-coins": "🪙", "fa-wallet": "👛", "fa-dollar-sign": "💲",
+    "fa-building-columns": "🏦", "fa-gem": "💎", "fa-crown": "👑", "fa-house": "🏠",
+    "fa-car": "🚗", "fa-chart-line": "📈", "fa-chart-pie": "📊", "fa-bitcoin-sign": "₿",
+    "fa-briefcase": "💼", "fa-store": "🏪", "fa-sack-dollar": "💰", "fa-fire": "🔥",
+    "fa-bolt": "⚡", "fa-box": "📦", "fa-gear": "⚙️", "fa-circle-plus": "➕",
+}
+
 def icon_emoji(fa_class):
     return EMOJI_FALLBACK.get(fa_class, "📁")
 
