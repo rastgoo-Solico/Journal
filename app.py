@@ -28,47 +28,65 @@ AUTH_TOKEN = get_auth_token()
 
 # ================== آیکون‌های FA ==================
 FALLBACK_ICONS = [
-    {"class": "fa-folder", "label": "Folder"}, {"class": "fa-coins", "label": "Coins"},
-    {"class": "fa-wallet", "label": "Wallet"}, {"class": "fa-money-bill-wave", "label": "Money"},
-    {"class": "fa-dollar-sign", "label": "Dollar"}, {"class": "fa-building-columns", "label": "Bank"},
-    {"class": "fa-piggy-bank", "label": "Piggy Bank"}, {"class": "fa-vault", "label": "Vault"},
-    {"class": "fa-gem", "label": "Gem"}, {"class": "fa-crown", "label": "Crown"},
-    {"class": "fa-house", "label": "House"}, {"class": "fa-building", "label": "Building"},
-    {"class": "fa-car", "label": "Car"}, {"class": "fa-chart-line", "label": "Chart Line"},
-    {"class": "fa-chart-pie", "label": "Chart Pie"}, {"class": "fa-bitcoin-sign", "label": "Bitcoin"},
-    {"class": "fa-ethereum", "label": "Ethereum"}, {"class": "fa-landmark", "label": "Landmark"},
-    {"class": "fa-industry", "label": "Industry"}, {"class": "fa-seedling", "label": "Seedling"},
-    {"class": "fa-briefcase", "label": "Briefcase"}, {"class": "fa-store", "label": "Store"},
-    {"class": "fa-sack-dollar", "label": "Sack"}, {"class": "fa-receipt", "label": "Receipt"},
-    {"class": "fa-tag", "label": "Tag"}, {"class": "fa-fire", "label": "Fire"},
-    {"class": "fa-bolt", "label": "Bolt"}, {"class": "fa-box", "label": "Box"},
-    {"class": "fa-gear", "label": "Gear"}, {"class": "fa-circle-plus", "label": "Circle Plus"},
+    {"class": "fa-folder", "label": "Folder", "categories": ["files"]},
+    {"class": "fa-coins", "label": "Coins", "categories": ["money"]},
+    {"class": "fa-wallet", "label": "Wallet", "categories": ["money"]},
+    {"class": "fa-money-bill-wave", "label": "Money Bill", "categories": ["money"]},
+    {"class": "fa-dollar-sign", "label": "Dollar Sign", "categories": ["money"]},
+    {"class": "fa-building-columns", "label": "Bank", "categories": ["money", "buildings"]},
+    {"class": "fa-piggy-bank", "label": "Piggy Bank", "categories": ["money"]},
+    {"class": "fa-vault", "label": "Vault", "categories": ["money", "security"]},
+    {"class": "fa-gem", "label": "Gem", "categories": ["shapes"]},
+    {"class": "fa-crown", "label": "Crown", "categories": ["shapes"]},
+    {"class": "fa-house", "label": "House", "categories": ["household"]},
+    {"class": "fa-building", "label": "Building", "categories": ["buildings"]},
+    {"class": "fa-car", "label": "Car", "categories": ["transportation"]},
+    {"class": "fa-chart-line", "label": "Chart Line", "categories": ["charts-diagrams"]},
+    {"class": "fa-chart-pie", "label": "Chart Pie", "categories": ["charts-diagrams"]},
+    {"class": "fa-bitcoin-sign", "label": "Bitcoin", "categories": ["money"]},
+    {"class": "fa-ethereum", "label": "Ethereum", "categories": ["money"]},
+    {"class": "fa-landmark", "label": "Landmark", "categories": ["buildings"]},
+    {"class": "fa-industry", "label": "Industry", "categories": ["buildings"]},
+    {"class": "fa-seedling", "label": "Seedling", "categories": ["nature"]},
+    {"class": "fa-briefcase", "label": "Briefcase", "categories": ["business"]},
+    {"class": "fa-store", "label": "Store", "categories": ["business"]},
+    {"class": "fa-sack-dollar", "label": "Sack Dollar", "categories": ["money"]},
+    {"class": "fa-receipt", "label": "Receipt", "categories": ["business"]},
+    {"class": "fa-tag", "label": "Tag", "categories": ["business"]},
+    {"class": "fa-fire", "label": "Fire", "categories": ["energy"]},
+    {"class": "fa-bolt", "label": "Bolt", "categories": ["energy"]},
+    {"class": "fa-box", "label": "Box", "categories": ["logistics"]},
+    {"class": "fa-gear", "label": "Gear", "categories": ["interfaces"]},
+    {"class": "fa-circle-plus", "label": "Circle Plus", "categories": ["interfaces"]},
 ]
 
 @st.cache_data(ttl=86400, show_spinner=False)
-@st.cache_data(ttl=86400, show_spinner=False)
-def load_fa_icons():
+def load_fa_icons(cache_v="v4"):
     try:
-        r = requests.get("https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/metadata/icons.json", timeout=15)
+        r = requests.get(
+            "https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/metadata/icons.json",
+            timeout=15,
+        )
         if r.status_code == 200:
             meta = r.json()
-            icons = [{"class": f"fa-{name}", "label": info.get("label", name),
-                      "categories": info.get("categories", [])}
-                     for name, info in meta.items() if "solid" in info.get("free", [])]
+            icons = []
+            for name, info in meta.items():
+                if "solid" not in info.get("free", []):
+                    continue
+                cats = info.get("categories", [])
+                if not cats:
+                    cats = ["__uncategorized__"]
+                icons.append({
+                    "class": f"fa-{name}",
+                    "label": info.get("label", name),
+                    "categories": cats,
+                })
             if icons:
                 return sorted(icons, key=lambda x: x["label"].lower())
     except Exception:
         pass
-    return [{"class": x["class"], "label": x["label"], "categories": []} for x in FALLBACK_ICONS]
-
-EMOJI_FALLBACK = {
-    "fa-folder": "📁", "fa-coins": "🪙", "fa-wallet": "👛", "fa-dollar-sign": "💲",
-    "fa-building-columns": "🏦", "fa-gem": "💎", "fa-crown": "👑", "fa-house": "🏠",
-    "fa-car": "🚗", "fa-chart-line": "📈", "fa-chart-pie": "📊", "fa-bitcoin-sign": "₿",
-    "fa-briefcase": "💼", "fa-store": "🏪", "fa-sack-dollar": "💰", "fa-fire": "🔥",
-    "fa-bolt": "⚡", "fa-box": "📦", "fa-gear": "⚙️", "fa-circle-plus": "➕",
-}
-
+    return FALLBACK_ICONS
+    
 def icon_emoji(fa_class):
     return EMOJI_FALLBACK.get(fa_class, "📁")
 
