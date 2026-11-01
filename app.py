@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import json
 import os
+import re
 import requests
 import base64
 import hashlib
@@ -23,7 +24,7 @@ def get_auth_token():
 
 AUTH_TOKEN = get_auth_token()
 
-# ================== فونت‌ها ==================
+# ================== فونت‌های داخلی (CDN) ==================
 FONTS = {
     "vazirmatn": ("Vazirmatn", "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css"),
     "sahel":     ("Sahel",    "https://cdn.jsdelivr.net/gh/rastikerdar/sahel-font@v3.4.0/dist/font-face.css"),
@@ -58,7 +59,7 @@ def load_fa_icons():
         r = requests.get("https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/metadata/icons.json", timeout=15)
         if r.status_code == 200:
             meta = r.json()
-            icons = [{"class": f"fa-{name}", "label": info.get("label", name)} 
+            icons = [{"class": f"fa-{name}", "label": info.get("label", name)}
                      for name, info in meta.items() if "solid" in info.get("free", [])]
             if icons:
                 return sorted(icons, key=lambda x: x["label"].lower())
@@ -90,7 +91,8 @@ def today_jalali_str():
     return jdatetime.date.today().strftime("%Y/%m/%d")
 
 def iso_to_jalali(iso_str, with_time=True):
-    if not iso_str: return "—"
+    if not iso_str:
+        return "—"
     try:
         dt = datetime.fromisoformat(iso_str)
         j = jdatetime.datetime.fromgregorian(datetime=dt)
@@ -102,7 +104,8 @@ def parse_jalali(s):
     try:
         s = s.strip().replace("-", "/").replace(".", "/")
         parts = s.split("/")
-        if len(parts) != 3: return None
+        if len(parts) != 3:
+            return None
         y, m, d = map(int, parts)
         return jdatetime.date(y, m, d)
     except Exception:
@@ -119,8 +122,8 @@ def fmt_num(x):
     except Exception:
         return str(x)
 
-# ================== CSS ==================
-_font_imports = "\n".join(f"@import url('{url}');" for _, (_, url) in FONTS.items())
+# ================== CSS پایه (پیش از لاگین) ==================
+_font_imports = "\n".join(f"@import url('{url}');" for _, (_, url) in FONTS.items() if url)
 st.markdown(f"""
 <style>
     {_font_imports}
@@ -149,7 +152,7 @@ st.markdown(f"""
     section[data-testid="stSidebar"] [data-testid="stMetricValue"] {{ font-size: 1.3rem !important; white-space: normal !important; overflow: visible !important; word-break: break-word !important; }}
     section[data-testid="stSidebar"] [data-testid="stDownloadButton"] button {{ width: 100% !important; }}
 
-    /* ===== ناوبری بدون آندرلاین ===== */
+    /* ناوبری بدون آندرلاین */
     .fa-nav {{
         display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
         margin-bottom: 1.5rem; padding-bottom: 0; direction: rtl;
@@ -167,18 +170,13 @@ st.markdown(f"""
         padding: 8px 14px; text-decoration: none !important;
         color: #4b5563 !important;
         background: transparent;
-        border: none !important;
-        border-bottom: none !important;
+        border: none !important; border-bottom: none !important;
         border-radius: 8px;
         font-weight: 500; font-size: 0.95rem;
         transition: all 0.15s; white-space: nowrap;
     }}
     .fa-nav-btn:hover {{ background: #f3f4f6; color: #1d4ed8 !important; }}
-    .fa-nav-btn.active {{
-        background: #dbeafe;
-        color: #1d4ed8 !important;
-        font-weight: 700;
-    }}
+    .fa-nav-btn.active {{ background: #dbeafe; color: #1d4ed8 !important; font-weight: 700; }}
     .fa-nav-btn i {{ font-size: 1.15rem; }}
     .fa-nav-btn span {{ text-decoration: none !important; border-bottom: none !important; }}
 
@@ -277,7 +275,7 @@ def load_github_file():
     if not GITHUB_TOKEN or not GITHUB_REPO: return None
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}?ref={GITHUB_BRANCH}"
     try:
-        r = requests.get(url, headers=github_headers(), timeout=15)
+        r = requests.get(url, headers=github_headers(), timeout=20)
         if r.status_code == 200:
             return json.loads(base64.b64decode(r.json()["content"]).decode("utf-8"))
     except Exception:
@@ -291,7 +289,7 @@ def save_github_file(data):
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
     sha = None
     try:
-        r = requests.get(url, headers=github_headers(), timeout=10)
+        r = requests.get(url, headers=github_headers(), timeout=15)
         if r.status_code == 200:
             sha = r.json()["sha"]
         elif r.status_code == 401:
@@ -306,28 +304,27 @@ def save_github_file(data):
     if sha:
         payload["sha"] = sha
     try:
-        r = requests.put(url, headers=github_headers(), json=payload, timeout=20)
+        r = requests.put(url, headers=github_headers(), json=payload, timeout=30)
         if r.status_code in (200, 201):
             return True, ""
-        elif r.status_code == 401:
+        if r.status_code == 401:
             return False, "توکن نامعتبر (401)"
-        elif r.status_code == 403:
-            return False, "دسترسی write ندارد (403)"
-        elif r.status_code == 409:
-            return False, "تضاد SHA - دوباره تلاش کنید"
-        elif r.status_code == 404:
+        if r.status_code == 403:
+            return False, "دسترسی write ندارد — مجوز Contents را روی Read/write بگذارید (403)"
+        if r.status_code == 404:
             return False, "مخزن یا branch یافت نشد (404)"
+        if r.status_code == 409:
+            return False, "تضاد SHA — دوباره تلاش کنید (409)"
         return False, f"HTTP {r.status_code}: {r.text[:100]}"
     except Exception as e:
         return False, f"خطای شبکه: {str(e)[:50]}"
 
 def verify_github_save(expected_data):
-    """Read from GitHub and compare with expected."""
     if not GITHUB_TOKEN or not GITHUB_REPO:
         return False, "GitHub تنظیم نشده", None
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}?ref={GITHUB_BRANCH}"
     try:
-        r = requests.get(url, headers=github_headers(), timeout=15)
+        r = requests.get(url, headers=github_headers(), timeout=20)
         if r.status_code != 200:
             return False, f"خواندن ناموفق: HTTP {r.status_code}", None
         info = r.json()
@@ -335,7 +332,7 @@ def verify_github_save(expected_data):
         sha = info.get("sha", "")[:8]
         size = info.get("size", 0)
         if gh_data.get("last_saved") != expected_data.get("last_saved"):
-            return False, f"timestamp متفاوت (GitHub: {gh_data.get('last_saved', '—')[:19]})", sha
+            return False, f"timestamp متفاوت", sha
         if len(gh_data.get("assets", [])) != len(expected_data.get("assets", [])):
             return False, "تعداد دارایی‌ها متفاوت است", sha
         return True, f"تأیید شد — {size:,} بایت", sha
@@ -345,7 +342,7 @@ def verify_github_save(expected_data):
 # ================== مهاجرت ==================
 def migrate_data(data):
     if not isinstance(data, dict) or not data:
-        return {"assets": [], "usd_rates": [], "settings": {"font": "vazirmatn", "nav_icons": DEFAULT_NAV_ICONS.copy()}}
+        return {"assets": [], "usd_rates": [], "settings": {"font": "vazirmatn", "nav_icons": DEFAULT_NAV_ICONS.copy(), "custom_fonts": {}}}
     if "usd_rates" not in data or not isinstance(data.get("usd_rates"), list):
         old = data.get("usd_rate")
         data["usd_rates"] = []
@@ -368,73 +365,121 @@ def migrate_data(data):
     if "assets" not in data or not isinstance(data.get("assets"), list): data["assets"] = []
     if "usd_rates" not in data or not isinstance(data.get("usd_rates"), list): data["usd_rates"] = []
     if "settings" not in data or not isinstance(data.get("settings"), dict):
-        data["settings"] = {"font": "vazirmatn", "nav_icons": DEFAULT_NAV_ICONS.copy()}
+        data["settings"] = {"font": "vazirmatn", "nav_icons": DEFAULT_NAV_ICONS.copy(), "custom_fonts": {}}
     data["settings"].setdefault("font", "vazirmatn")
-    if "nav_icons" not in data["settings"]: data["settings"]["nav_icons"] = DEFAULT_NAV_ICONS.copy()
+    if "nav_icons" not in data["settings"] or not isinstance(data["settings"].get("nav_icons"), dict):
+        data["settings"]["nav_icons"] = DEFAULT_NAV_ICONS.copy()
     for k, v in DEFAULT_NAV_ICONS.items():
         data["settings"]["nav_icons"].setdefault(k, v.copy())
+    if "custom_fonts" not in data["settings"] or not isinstance(data["settings"].get("custom_fonts"), dict):
+        data["settings"]["custom_fonts"] = {}
     for a in data["assets"]:
         if not isinstance(a.get("icon"), str) or not a["icon"].startswith("fa-"):
             a["icon"] = "fa-folder"
         a.setdefault("color", "#3b82f6")
     return data
 
-# ================== بارگذاری هوشمند با timestamp ==================
 def load_all():
-    """اولویت با داده‌ای که last_saved جدیدتر دارد. در صورت شک، GitHub."""
     local = load_local_file()
     gh = load_github_file()
     l_has = local and (local.get("assets") or local.get("usd_rates"))
     g_has = gh and (gh.get("assets") or gh.get("usd_rates"))
-    
     if l_has and g_has:
         l_saved = local.get("last_saved", "")
         g_saved = gh.get("last_saved", "")
-        if l_saved and g_saved:
-            chosen = local if l_saved > g_saved else gh
-        else:
-            chosen = gh  # GitHub امن‌تر روی cloud
+        chosen = (local if l_saved > g_saved else gh) if (l_saved and g_saved) else gh
         save_local_file(chosen)
         return migrate_data(chosen)
-    
     if g_has:
-        save_local_file(gh)  # sync به فایل محلی
+        save_local_file(gh)
         return migrate_data(gh)
     if l_has:
         return migrate_data(local)
-    return {"assets": [], "usd_rates": [], "settings": {"font": "vazirmatn", "nav_icons": DEFAULT_NAV_ICONS.copy()}}
+    return {"assets": [], "usd_rates": [], "settings": {"font": "vazirmatn", "nav_icons": DEFAULT_NAV_ICONS.copy(), "custom_fonts": {}}}
 
-# ================== ذخیره با تأیید ==================
 def save_all(data, verify=True):
     data["last_saved"] = datetime.now().isoformat()
     data["last_saved_jalali"] = jdatetime.datetime.fromgregorian(datetime=datetime.now()).strftime("%Y/%m/%d - %H:%M")
-    
     local_ok = save_local_file(data)
     gh_ok, gh_err = save_github_file(data)
-    
     if gh_ok:
         if verify:
             v_ok, v_msg, _ = verify_github_save(data)
             if v_ok:
                 st.toast("✅ ذخیره و تأیید شد", icon="✅")
                 return True
-            else:
-                st.warning(f"⚠️ ذخیره شد ولی تأیید ناقص: {v_msg}")
-                return False
+            st.warning(f"⚠️ ذخیره شد ولی تأیید ناقص: {v_msg}")
+            return False
         st.toast("✅ ذخیره شد")
         return True
     else:
         if local_ok:
             st.error(f"❌ **ذخیره GitHub ناموفق!** {gh_err}")
-            st.warning("⚠️ فقط در حافظه موقت ذخیره شد. با ری‌استارت **داده از دست می‌رود!**")
+            st.warning("⚠️ فقط در حافظه موقت ذخیره شد — با ری‌استارت داده از دست می‌رود!")
         else:
             st.error(f"❌ **هیچ جا ذخیره نشد!** GitHub: {gh_err}")
         return False
 
+# ================== توابع فونت ==================
+def get_all_fonts(data):
+    """ادغام فونت‌های داخلی + سفارشی"""
+    fonts = {}
+    for k, (name, url) in FONTS.items():
+        fonts[k] = {"name": name, "family": name, "builtin": True, "url": url}
+    custom = (data.get("settings") or {}).get("custom_fonts", {}) or {}
+    for k, info in custom.items():
+        fonts[k] = {"name": info.get("display_name", k), "family": k, "builtin": False, "url": None}
+    return fonts
+
+def apply_font(data):
+    """اعمال فونت فعال + @font-face برای همه فونت‌های سفارشی"""
+    settings = data.get("settings") or {}
+    active_key = settings.get("font", "vazirmatn")
+    custom_fonts = settings.get("custom_fonts", {}) or {}
+
+    css_parts = ["<style>"]
+    # @font-face برای همه فونت‌های سفارشی (نه فقط فعال — برای پیش‌نمایش)
+    for key, info in custom_fonts.items():
+        try:
+            css_parts.append(
+                f"@font-face {{"
+                f" font-family: '{key}';"
+                f" src: url(data:{info.get('mime', 'font/ttf')};base64,{info['data']}) format('{info.get('format', 'truetype')}');"
+                f" font-weight: normal; font-style: normal; font-display: swap;"
+                f" }}"
+            )
+        except Exception:
+            continue
+
+    # تعیین خانواده فونت فعال
+    if active_key in custom_fonts:
+        active_family = active_key
+    elif active_key in FONTS:
+        active_family = FONTS[active_key][0]
+    else:
+        active_family = "Vazirmatn"
+
+    css_parts.append(
+        f"* {{ font-family: '{active_family}', 'Vazirmatn', Tahoma, sans-serif !important; }}"
+        f'.fa, .fas, .far, .fal, .fat, .fab, .fad, .fa-solid, .fa-regular, .fa-brands {{'
+        f' font-family: "Font Awesome 6 Free", "Font Awesome 6 Brands" !important;'
+        f" }}"
+        f'.material-symbols-rounded, .material-symbols-outlined, .material-symbols-sharp,'
+        f' .material-icons, .material-icons-round, .material-icons-outlined, .material-icons-two-tone, .material-icons-sharp,'
+        f' span[data-testid="stExpanderToggleIcon"], span[data-testid="stTooltipIcon"], span[data-testid="stIconMaterial"] {{'
+        f" font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;"
+        f" font-feature-settings: 'liga' !important;"
+        f" }}"
+    )
+    css_parts.append("</style>")
+    st.markdown("".join(css_parts), unsafe_allow_html=True)
+
 # ================== توابع کمکی ==================
 def get_settings(data):
     s = data.get("settings") or {}
-    return {"font": s.get("font", "vazirmatn"), "nav_icons": s.get("nav_icons", DEFAULT_NAV_ICONS)}
+    return {"font": s.get("font", "vazirmatn"),
+            "nav_icons": s.get("nav_icons", DEFAULT_NAV_ICONS),
+            "custom_fonts": s.get("custom_fonts", {}) or {}}
 
 def asset_icon(asset):
     ic = asset.get("icon", "fa-folder")
@@ -513,7 +558,7 @@ def build_portfolio_timeline(data):
         rows.append({"date_gregorian": d, "date_jalali": jd, "total_irr": t_irr, "total_usd": t_usd})
     return pd.DataFrame(rows)
 
-# ================== مقداردهی ==================
+# ================== مقداردهی داده ==================
 if "data" not in st.session_state:
     st.session_state.data = load_all()
 st.session_state.data = migrate_data(st.session_state.data)
@@ -521,22 +566,8 @@ data = st.session_state.data
 data.setdefault("assets", [])
 data.setdefault("usd_rates", [])
 
-# ================== اعمال فونت ==================
-_settings = get_settings(data)
-_fkey = _settings["font"] if _settings["font"] in FONTS else "vazirmatn"
-_fname = FONTS[_fkey][0]
-st.markdown(f"""
-<style>
-    * {{ font-family: '{_fname}', 'Vazirmatn', Tahoma, sans-serif !important; }}
-    .fa, .fas, .far, .fal, .fat, .fab, .fad, .fa-solid, .fa-regular, .fa-brands {{
-        font-family: "Font Awesome 6 Free", "Font Awesome 6 Brands" !important;
-    }}
-    .material-symbols-rounded, .material-symbols-outlined, .material-icons,
-    span[data-testid="stExpanderToggleIcon"], span[data-testid="stIconMaterial"] {{
-        font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
-    }}
-</style>
-""", unsafe_allow_html=True)
+# ✅ اعمال فونت فعال (شامل @font-face برای فونت‌های سفارشی)
+apply_font(data)
 
 # ================== سایدبار ==================
 with st.sidebar:
@@ -559,17 +590,14 @@ with st.sidebar:
         """, unsafe_allow_html=True)
     else:
         st.info("💡 هنوز نرخی ثبت نشده.")
-    
+
     st.divider()
-    # ✅ نمایش last_saved — اطمینان از ذخیره
     st.markdown("**💾 وضعیت ذخیره‌سازی**")
     last_saved_j = data.get("last_saved_jalali", "—")
-    last_saved_iso = data.get("last_saved", "")
-    if last_saved_iso:
+    if data.get("last_saved"):
         st.caption(f"✅ آخرین ذخیره: {last_saved_j}")
     else:
         st.caption("⚠️ هنوز ذخیره نشده")
-    
     local_ok = os.path.exists(DATA_FILE)
     gh_status, gh_message = check_github_status(GITHUB_TOKEN, GITHUB_REPO)
     c1, c2 = st.columns(2)
@@ -577,14 +605,12 @@ with st.sidebar:
     c2.caption(f"{'✅' if gh_status == 'ok' else '❌'} GitHub")
     if gh_status != "ok":
         st.error(f"⚠️ {gh_message}")
-    
-    # دکمه ذخیره فوری
     if st.button("💾 ذخیره فوری + تأیید", use_container_width=True, key="force_save"):
         if save_all(data):
             st.rerun()
-    
+
     st.divider()
-    with st.expander("📥 پشتیبان‌گیری / 📤 بازیابی", expanded=False):
+    with st.expander("📥 پشتیبان / 📤 بازیابی", expanded=False):
         st.download_button("📥 دانلود JSON", data=json.dumps(data, ensure_ascii=False, indent=2),
                           file_name=f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                           mime="application/json", use_container_width=True)
@@ -613,10 +639,9 @@ elif qp_nav and qp_nav in nav_options:
     st.session_state.nav_tab = qp_nav
 elif "nav_tab" not in st.session_state or st.session_state.nav_tab not in nav_options:
     st.session_state.nav_tab = "overview"
-
 selected = st.session_state.nav_tab
 
-_nav_icons = _settings["nav_icons"]
+_nav_icons = (get_settings(data))["nav_icons"]
 _nav_html = ['<div class="fa-nav">']
 for opt in nav_options:
     if opt in ("overview", "journal", "usd", "settings"):
@@ -630,8 +655,7 @@ for opt in nav_options:
     active_cls = " active" if opt == selected else ""
     _nav_html.append(
         f'<a href="?nav={opt}&auth={AUTH_TOKEN}" class="fa-nav-btn{active_cls}">'
-        f'<i class="fa-solid {ic}" style="color:{col};"></i>'
-        f'<span>{lbl}</span></a>'
+        f'<i class="fa-solid {ic}" style="color:{col};"></i><span>{lbl}</span></a>'
     )
 _nav_html.append("</div>")
 st.markdown("".join(_nav_html), unsafe_allow_html=True)
@@ -640,25 +664,129 @@ st.markdown("".join(_nav_html), unsafe_allow_html=True)
 def render_settings_page(data):
     st.header("⚙️ تنظیمات")
     settings = get_settings(data)
+    all_fonts = get_all_fonts(data)
+
     t_font, t_nav, t_assets, t_lib, t_verify, t_storage = st.tabs([
         "🔤 فونت", "🎨 آیکون منو", "📦 آیکون دارایی", "📚 کتابخانه", "🔍 تأیید ذخیره", "💾 وضعیت"
     ])
-    
+
+    # ---------- 🔤 فونت ----------
     with t_font:
-        font_keys = list(FONTS.keys())
-        cur_idx = font_keys.index(settings["font"]) if settings["font"] in font_keys else 0
-        new_font = st.selectbox("فونت", font_keys, index=cur_idx,
-                               format_func=lambda k: FONTS[k][0], key="settings_font_select")
-        st.markdown(
-            f'<div style="padding:16px; border:1px solid #e5e7eb; border-radius:8px; margin-top:12px; font-family:\'{FONTS[new_font][0]}\', Tahoma;">'
-            f'<div style="font-size:1.4rem;">نمونه متن با فونت {FONTS[new_font][0]}</div>'
-            f'<div>متن آزمایشی. اعداد: ۱۲۳۴۵۶۷۸۹۰</div></div>', unsafe_allow_html=True)
-        if st.button("💾 ذخیره فونت", use_container_width=True, key="save_font_btn"):
+        st.subheader("🔤 فونت برنامه")
+
+        font_keys = list(all_fonts.keys())
+        cur_font = settings["font"] if settings["font"] in font_keys else "vazirmatn"
+
+        c1, c2 = st.columns([3, 1])
+        new_font = c1.selectbox(
+            "انتخاب فونت",
+            font_keys,
+            index=font_keys.index(cur_font),
+            format_func=lambda k: all_fonts[k]["name"] + (" (سفارشی)" if not all_fonts[k]["builtin"] else ""),
+            key="font_select_v2",
+        )
+        if c2.button("💾 ذخیره فونت", use_container_width=True, key="apply_font_btn"):
             data["settings"]["font"] = new_font
             st.session_state.data = data
             save_all(data)
             st.rerun()
-    
+
+        # پیش‌نمایش
+        preview_family = all_fonts[new_font]["family"]
+        st.markdown(
+            f'<div style="padding:20px; border:2px solid #3b82f6; border-radius:10px; margin:16px 0; background:#f9fafb; direction:rtl;">'
+            f'<div style="font-size:0.85rem; color:#6b7280; margin-bottom:10px;">پیش‌نمایش: <b>{all_fonts[new_font]["name"]}</b></div>'
+            f'<div style="font-family:\'{preview_family}\', Tahoma; font-size:1.8rem; margin-bottom:12px;">داشبورد مالی — ۱۲۳۴۵</div>'
+            f'<div style="font-family:\'{preview_family}\', Tahoma; font-size:1.05rem;">این یک متن نمونه برای نمایش فونت است. اعداد: ۱۲۳۴۵۶۷۸۹۰ | 1234567890</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        st.divider()
+        st.subheader("📤 بارگذاری فونت سفارشی")
+        st.caption("فرمت‌های پشتیبانی: **TTF, OTF, WOFF, WOFF2** — حداکثر **۱۰ مگابایت**")
+        st.caption("⚠️ فونت به‌صورت base64 در `data.json` ذخیره می‌شود و حجم فایل را افزایش می‌دهد. اما بین دستگاه‌ها همگام می‌ماند.")
+
+        with st.form("upload_font_form", clear_on_submit=True):
+            uploaded_file = st.file_uploader(
+                "فایل فونت",
+                type=["ttf", "otf", "woff", "woff2"],
+                key="custom_font_uploader",
+            )
+            display_name = st.text_input(
+                "نام نمایشی فونت",
+                placeholder="مثلاً: فونت شخصی من",
+            )
+            if st.form_submit_button("📤 بارگذاری و ذخیره", use_container_width=True):
+                if uploaded_file is None:
+                    st.error("لطفاً یک فایل انتخاب کنید.")
+                elif uploaded_file.size > 10 * 1024 * 1024:
+                    st.error(f"حجم فایل ({uploaded_file.size // 1024:,} KB) بیشتر از ۱۰ مگابایت است.")
+                else:
+                    try:
+                        file_bytes = uploaded_file.read()
+                        b64_data = base64.b64encode(file_bytes).decode()
+                        ext = uploaded_file.name.lower().rsplit(".", 1)[-1]
+                        format_map = {"ttf": "truetype", "otf": "opentype", "woff": "woff", "woff2": "woff2"}
+                        mime_map = {"ttf": "font/ttf", "otf": "font/otf", "woff": "font/woff", "woff2": "font/woff2"}
+                        fmt = format_map.get(ext, "truetype")
+                        mime = mime_map.get(ext, "font/ttf")
+
+                        base_name = uploaded_file.name.rsplit(".", 1)[0]
+                        safe = re.sub(r"[^a-z0-9_]", "_", base_name.lower())[:40]
+                        font_key = f"custom_{safe}"
+                        existing = data["settings"].get("custom_fonts", {})
+                        counter = 1
+                        original_key = font_key
+                        while font_key in existing:
+                            counter += 1
+                            font_key = f"{original_key}_{counter}"
+
+                        data["settings"].setdefault("custom_fonts", {})[font_key] = {
+                            "display_name": (display_name.strip() or base_name)[:60],
+                            "data": b64_data,
+                            "format": fmt,
+                            "mime": mime,
+                            "filename": uploaded_file.name,
+                            "size_bytes": len(file_bytes),
+                            "uploaded_at": datetime.now().isoformat(),
+                        }
+                        st.session_state.data = data
+                        save_all(data)
+                        st.success(f"✅ فونت «{display_name or base_name}» بارگذاری شد.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"خطا در بارگذاری: {e}")
+
+        st.divider()
+        st.subheader("📚 فونت‌های سفارشی من")
+        custom_fonts = data["settings"].get("custom_fonts", {})
+        if not custom_fonts:
+            st.info("هنوز فونت سفارشی بارگذاری نشده.")
+        else:
+            st.caption(f"{len(custom_fonts)} فونت بارگذاری شده")
+            for key, info in list(custom_fonts.items()):
+                with st.container(border=True):
+                    c1, c2, c3, c4 = st.columns([1, 3, 2, 1])
+                    c1.markdown(
+                        f'<div style="text-align:center; font-family:\'{key}\', Tahoma; font-size:2.2rem; color:#3b82f6; padding:6px;">آ</div>',
+                        unsafe_allow_html=True,
+                    )
+                    c2.markdown(f"**{info.get('display_name', key)}**")
+                    c2.caption(f"`{info.get('filename', '—')}` — {info.get('size_bytes', 0) // 1024:,} KB")
+                    if settings["font"] == key:
+                        c3.success("✅ فعال")
+                    else:
+                        c3.caption(f"کلید: `{key[:30]}`")
+                    if c4.button("🗑️", key=f"del_font_{key}", help="حذف این فونت"):
+                        del data["settings"]["custom_fonts"][key]
+                        if data["settings"]["font"] == key:
+                            data["settings"]["font"] = "vazirmatn"
+                        st.session_state.data = data
+                        save_all(data)
+                        st.rerun()
+
+    # ---------- 🎨 آیکون منو ----------
     with t_nav:
         st.subheader("آیکون و رنگ منو")
         all_icons = load_fa_icons()
@@ -671,7 +799,6 @@ def render_settings_page(data):
                 c1.markdown(f'<div style="text-align:center; padding:10px;"><i class="fa-solid {cfg["icon"]}" style="color:{cfg["color"]}; font-size:2.2rem;"></i></div>', unsafe_allow_html=True)
                 c2.markdown(f"**{NAV_LABELS[nav_key]}**")
                 search_n = c3.text_input("جستجو", key=f"search_nav_{nav_key}", placeholder="جستجوی آیکون...", label_visibility="collapsed")
-                filtered = all_classes
                 if search_n:
                     q = search_n.lower()
                     filtered = [c for c in all_classes if q in c.lower() or q in labels_map.get(c, "").lower()][:200]
@@ -680,8 +807,7 @@ def render_settings_page(data):
                 if cfg["icon"] not in filtered:
                     filtered = [cfg["icon"]] + filtered
                 idx = filtered.index(cfg["icon"]) if cfg["icon"] in filtered else 0
-                new_icon = c3.selectbox("آیکون", filtered, index=idx,
-                                       format_func=lambda c: labels_map.get(c, c),
+                new_icon = c3.selectbox("آیکون", filtered, index=idx, format_func=lambda c: labels_map.get(c, c),
                                        key=f"pick_nav_{nav_key}", label_visibility="collapsed")
                 new_color = c4.color_picker("رنگ", value=cfg["color"], key=f"color_nav_{nav_key}")
                 if st.button("💾 ذخیره", key=f"save_nav_{nav_key}", use_container_width=True):
@@ -689,7 +815,8 @@ def render_settings_page(data):
                     st.session_state.data = data
                     save_all(data)
                     st.rerun()
-    
+
+    # ---------- 📦 آیکون دارایی ----------
     with t_assets:
         st.subheader("آیکون و رنگ دارایی‌ها")
         if not assets:
@@ -705,7 +832,6 @@ def render_settings_page(data):
                     c1.markdown(f'<div style="text-align:center; padding:10px;"><i class="fa-solid {cur_ic}" style="color:{cur_col}; font-size:2.2rem;"></i></div>', unsafe_allow_html=True)
                     c2.markdown(f"**{a['name']}**")
                     search_a = c3.text_input("جستجو", key=f"search_asset_{a['id']}", placeholder="جستجو...", label_visibility="collapsed")
-                    filtered = all_classes
                     if search_a:
                         q = search_a.lower()
                         filtered = [c for c in all_classes if q in c.lower() or q in labels_map.get(c, "").lower()][:200]
@@ -714,8 +840,7 @@ def render_settings_page(data):
                     if cur_ic not in filtered:
                         filtered = [cur_ic] + filtered
                     idx = filtered.index(cur_ic) if cur_ic in filtered else 0
-                    new_icon = c3.selectbox("آیکون", filtered, index=idx,
-                                           format_func=lambda c: labels_map.get(c, c),
+                    new_icon = c3.selectbox("آیکون", filtered, index=idx, format_func=lambda c: labels_map.get(c, c),
                                            key=f"pick_asset_{a['id']}", label_visibility="collapsed")
                     new_color = c4.color_picker("رنگ", value=cur_col, key=f"color_asset_{a['id']}")
                     if st.button("💾 ذخیره", key=f"save_asset_{a['id']}", use_container_width=True):
@@ -727,7 +852,8 @@ def render_settings_page(data):
                         st.session_state.data = data
                         save_all(data)
                         st.rerun()
-    
+
+    # ---------- 📚 کتابخانه ----------
     with t_lib:
         all_icons = load_fa_icons()
         st.caption(f"مجموعاً **{len(all_icons)}** آیکون FA رایگان")
@@ -743,31 +869,24 @@ def render_settings_page(data):
                         f'<div style="text-align:center; padding:8px; border:1px solid #e5e7eb; border-radius:6px; margin:2px;" title="{ic["class"]}">'
                         f'<i class="fa-solid {ic["class"]}" style="font-size:1.4rem; color:#3b82f6;"></i>'
                         f'<div style="font-size:0.6rem; margin-top:4px; color:#6b7280; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{ic["label"]}</div></div>',
-                        unsafe_allow_html=True)
-    
+                        unsafe_allow_html=True,
+                    )
+
+    # ---------- 🔍 تأیید ذخیره ----------
     with t_verify:
         st.subheader("🔍 تأیید ذخیره‌سازی")
-        st.caption("این بخش برای اطمینان از ذخیره صحیح داده‌ها در GitHub است.")
-        
-        # نمایش last_saved فعلی
-        ls = data.get("last_saved", "")
-        ls_j = data.get("last_saved_jalali", "—")
-        if ls:
-            st.info(f"📅 **آخرین ذخیره در حافظه:** {ls_j} (ISO: {ls[:19]})")
+        st.caption("برای اطمینان از ذخیره صحیح داده‌ها در GitHub")
+        if data.get("last_saved"):
+            st.info(f"📅 **آخرین ذخیره در حافظه:** {data.get('last_saved_jalali', '—')}")
         else:
-            st.warning("⚠️ هنوز هیچ ذخیره‌ای انجام نشده!")
-        
+            st.warning("⚠️ هنوز ذخیره‌ای انجام نشده!")
         st.divider()
-        
         col1, col2, col3 = st.columns(3)
         with col1:
-            if st.button("🔍 تأیید ذخیره (خواندن GitHub)", use_container_width=True, key="verify_gh_btn"):
+            if st.button("🔍 تأیید ذخیره", use_container_width=True, key="verify_gh_btn"):
                 v_ok, v_msg, sha = verify_github_save(data)
-                if v_ok:
-                    st.success(f"✅ {v_msg}")
-                    st.caption(f"SHA: `{sha}`")
-                else:
-                    st.error(f"❌ {v_msg}")
+                (st.success if v_ok else st.error)(f"{'✅' if v_ok else '❌'} {v_msg}")
+                if sha: st.caption(f"SHA: `{sha}`")
         with col2:
             if st.button("🔄 بارگذاری از GitHub", use_container_width=True, key="force_load_btn"):
                 gh = load_github_file()
@@ -783,32 +902,33 @@ def render_settings_page(data):
                 if save_all(data):
                     st.success("✅ ذخیره و تأیید شد")
                     st.rerun()
-        
         st.divider()
         st.markdown("**📊 مقایسه داده فعلی با GitHub**")
         gh = load_github_file()
         if gh:
             c1, c2 = st.columns(2)
             with c1:
-                st.markdown("**در حافظه (session):**")
+                st.markdown("**در حافظه:**")
                 st.caption(f"دارایی‌ها: {len(data.get('assets', []))}")
                 st.caption(f"رکوردها: {sum(len(a.get('records', [])) for a in data.get('assets', []))}")
                 st.caption(f"نرخ دلار: {len(data.get('usd_rates', []))}")
+                st.caption(f"فونت سفارشی: {len(data.get('settings', {}).get('custom_fonts', {}))}")
                 st.caption(f"last_saved: {data.get('last_saved', '—')[:19]}")
             with c2:
                 st.markdown("**در GitHub:**")
                 st.caption(f"دارایی‌ها: {len(gh.get('assets', []))}")
                 st.caption(f"رکوردها: {sum(len(a.get('records', [])) for a in gh.get('assets', []))}")
                 st.caption(f"نرخ دلار: {len(gh.get('usd_rates', []))}")
+                st.caption(f"فونت سفارشی: {len(gh.get('settings', {}).get('custom_fonts', {}))}")
                 st.caption(f"last_saved: {gh.get('last_saved', '—')[:19]}")
-            
             if data.get("last_saved") == gh.get("last_saved"):
                 st.success("✅ داده‌های حافظه و GitHub یکسان هستند")
             else:
-                st.warning("⚠️ داده‌های حافظه و GitHub متفاوت هستند. روی «ذخیره فوری» بزنید.")
+                st.warning("⚠️ متفاوت هستند — روی «ذخیره فوری» بزنید")
         else:
             st.error("❌ خواندن از GitHub ناموفق — داده‌ها ممکن است از دست بروند!")
-    
+
+    # ---------- 💾 وضعیت ----------
     with t_storage:
         st.subheader("💾 وضعیت اتصال")
         local_ok = os.path.exists(DATA_FILE)
@@ -830,10 +950,11 @@ def render_settings_page(data):
                     st.code('GITHUB_TOKEN = "ghp_..."\nGITHUB_REPO = "user/repo"\nAPP_PASSWORD = "..."', language="toml")
         st.divider()
         st.subheader("📊 آمار")
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns(4)
         c1.metric("دارایی‌ها", len(data.get("assets", [])))
         c2.metric("رکوردها", sum(len(a.get("records", [])) for a in data.get("assets", [])))
         c3.metric("نرخ دلار", len(data.get("usd_rates", [])))
+        c4.metric("فونت سفارشی", len(data.get("settings", {}).get("custom_fonts", {})))
 
 # ================== صفحه نمای کلی ==================
 if selected == "overview":
@@ -916,7 +1037,8 @@ elif selected == "journal":
             c1, c2, c3 = st.columns([3, 2, 2])
             name = c1.text_input("نام", placeholder="طلا، سهام...")
             cur = c2.selectbox("ارز", ["IRR", "USD"], format_func=lambda x: "ریال" if x == "IRR" else "دلار")
-            init_icon = c3.selectbox("آیکون", all_classes, index=all_classes.index("fa-coins") if "fa-coins" in all_classes else 0,
+            init_icon = c3.selectbox("آیکون", all_classes,
+                                     index=all_classes.index("fa-coins") if "fa-coins" in all_classes else 0,
                                      format_func=lambda c: labels_map.get(c, c), key="new_asset_icon")
             init_color = st.color_picker("رنگ آیکون", value="#3b82f6", key="new_asset_color")
             st.markdown("**📝 رکورد اولیه (اختیاری)**")
@@ -1033,7 +1155,7 @@ elif selected == "usd":
 elif selected == "settings":
     render_settings_page(data)
 
-# ================== صفحه دارایی ==================
+# ================== صفحه دارایی اختصاصی ==================
 elif selected.startswith("asset_"):
     aid = selected.replace("asset_", "")
     asset = next((a for a in assets if a["id"] == aid), None)
