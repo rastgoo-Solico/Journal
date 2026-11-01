@@ -51,7 +51,7 @@
           "date_gregorian": "2026-11-01T06:43:00",
           "date_jalali": "1405/08/10",
           "quantity": 2100000.0,
-          "unit_price": 1348.0,
+          "unit_price": 1346.0,
           "note": ""
         }
       ],
@@ -147,6 +147,6 @@
     "custom_fonts": {},
     "dark_mode": false
   },
-  "last_saved": "2026-11-01T08:01:33.999689",
-  "last_saved_jalali": "1405/08/10 - 08:01"
+  "last_saved": "2026-11-01T09:06:46.500715",
+  "last_saved_jalali": "1405/08/10 - 09:06"
 }
