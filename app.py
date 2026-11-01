@@ -23,38 +23,39 @@ NAV_LABELS = {"overview": "نمای کلی", "journal": "افزودن دارای
 NAV_EMOJI = {"overview": "📊", "journal": "➕", "usd": "💵", "settings": "⚙️"}
 
 FALLBACK_ICONS = [
-    {"class": "fa-folder", "label": "Folder", "categories": ["files"]},
-    {"class": "fa-coins", "label": "Coins", "categories": ["money"]},
-    {"class": "fa-wallet", "label": "Wallet", "categories": ["money"]},
-    {"class": "fa-money-bill-wave", "label": "Money", "categories": ["money"]},
-    {"class": "fa-dollar-sign", "label": "Dollar", "categories": ["money"]},
-    {"class": "fa-building-columns", "label": "Bank", "categories": ["money", "buildings"]},
-    {"class": "fa-piggy-bank", "label": "Piggy Bank", "categories": ["money"]},
-    {"class": "fa-vault", "label": "Vault", "categories": ["money", "security"]},
-    {"class": "fa-gem", "label": "Gem", "categories": ["shapes"]},
-    {"class": "fa-crown", "label": "Crown", "categories": ["shapes"]},
-    {"class": "fa-house", "label": "House", "categories": ["household"]},
-    {"class": "fa-building", "label": "Building", "categories": ["buildings"]},
-    {"class": "fa-car", "label": "Car", "categories": ["transportation"]},
-    {"class": "fa-chart-line", "label": "Chart Line", "categories": ["charts-diagrams"]},
-    {"class": "fa-chart-pie", "label": "Chart Pie", "categories": ["charts-diagrams"]},
-    {"class": "fa-bitcoin-sign", "label": "Bitcoin", "categories": ["money"]},
-    {"class": "fa-ethereum", "label": "Ethereum", "categories": ["money"]},
-    {"class": "fa-landmark", "label": "Landmark", "categories": ["buildings"]},
-    {"class": "fa-industry", "label": "Industry", "categories": ["buildings"]},
-    {"class": "fa-seedling", "label": "Seedling", "categories": ["nature"]},
-    {"class": "fa-briefcase", "label": "Briefcase", "categories": ["business"]},
-    {"class": "fa-store", "label": "Store", "categories": ["business"]},
-    {"class": "fa-sack-dollar", "label": "Sack Dollar", "categories": ["money"]},
-    {"class": "fa-receipt", "label": "Receipt", "categories": ["business"]},
-    {"class": "fa-tag", "label": "Tag", "categories": ["business"]},
-    {"class": "fa-fire", "label": "Fire", "categories": ["energy"]},
-    {"class": "fa-bolt", "label": "Bolt", "categories": ["energy"]},
-    {"class": "fa-box", "label": "Box", "categories": ["logistics"]},
-    {"class": "fa-gear", "label": "Gear", "categories": ["interfaces"]},
-    {"class": "fa-circle-plus", "label": "Circle Plus", "categories": ["interfaces"]},
+    {"class": "fa-folder", "label": "Folder"},
+    {"class": "fa-coins", "label": "Coins"},
+    {"class": "fa-wallet", "label": "Wallet"},
+    {"class": "fa-money-bill-wave", "label": "Money"},
+    {"class": "fa-dollar-sign", "label": "Dollar"},
+    {"class": "fa-building-columns", "label": "Bank"},
+    {"class": "fa-piggy-bank", "label": "Piggy Bank"},
+    {"class": "fa-vault", "label": "Vault"},
+    {"class": "fa-gem", "label": "Gem"},
+    {"class": "fa-crown", "label": "Crown"},
+    {"class": "fa-house", "label": "House"},
+    {"class": "fa-building", "label": "Building"},
+    {"class": "fa-car", "label": "Car"},
+    {"class": "fa-chart-line", "label": "Chart Line"},
+    {"class": "fa-chart-pie", "label": "Chart Pie"},
+    {"class": "fa-bitcoin-sign", "label": "Bitcoin"},
+    {"class": "fa-ethereum", "label": "Ethereum"},
+    {"class": "fa-landmark", "label": "Landmark"},
+    {"class": "fa-industry", "label": "Industry"},
+    {"class": "fa-seedling", "label": "Seedling"},
+    {"class": "fa-briefcase", "label": "Briefcase"},
+    {"class": "fa-store", "label": "Store"},
+    {"class": "fa-sack-dollar", "label": "Sack Dollar"},
+    {"class": "fa-receipt", "label": "Receipt"},
+    {"class": "fa-tag", "label": "Tag"},
+    {"class": "fa-fire", "label": "Fire"},
+    {"class": "fa-bolt", "label": "Bolt"},
+    {"class": "fa-box", "label": "Box"},
+    {"class": "fa-gear", "label": "Gear"},
+    {"class": "fa-circle-plus", "label": "Circle Plus"},
 ]
 
+# ================== دسته‌بندی معنادار مالی ==================
 CATEGORY_KEYWORDS = {
     "money": ["coin", "dollar", "money", "wallet", "bank", "cash", "currency",
               "credit-card", "payment", "receipt", "invoice", "sack", "piggy",
@@ -165,15 +166,20 @@ def load_fa_icons(cache_v="v7"):
                 return sorted(icons, key=lambda x: x["label"].lower())
     except Exception:
         pass
-    # fallback: دسته‌بندی معنادار روی fallback
-    out = []
-    for ic in FALLBACK_ICONS:
-        out.append({
-            "class": ic["class"],
-            "label": ic["label"],
-            "categories": categorize_icon(ic["class"], ic["label"]),
-        })
-    return out
+    return [{"class": ic["class"], "label": ic["label"],
+             "categories": categorize_icon(ic["class"], ic["label"])}
+            for ic in FALLBACK_ICONS]
+
+def icon_emoji(fa_class):
+    _EMOJI = {
+        "fa-folder": "📁", "fa-coins": "🪙", "fa-wallet": "👛", "fa-dollar-sign": "💲",
+        "fa-building-columns": "🏦", "fa-gem": "💎", "fa-crown": "👑", "fa-house": "🏠",
+        "fa-car": "🚗", "fa-chart-line": "📈", "fa-chart-pie": "📊", "fa-bitcoin-sign": "₿",
+        "fa-briefcase": "💼", "fa-store": "🏪", "fa-sack-dollar": "💰", "fa-fire": "🔥",
+        "fa-bolt": "⚡", "fa-box": "📦", "fa-gear": "⚙️", "fa-circle-plus": "➕",
+    }
+    return _EMOJI.get(fa_class, "📁")
+
 # ================== توابع تاریخ ==================
 def today_jalali_str():
     return jdatetime.date.today().strftime("%Y/%m/%d")
@@ -374,7 +380,6 @@ def migrate_data(data):
         data["settings"]["nav_icons"].setdefault(k, v.copy())
     if "custom_fonts" not in data["settings"] or not isinstance(data["settings"].get("custom_fonts"), dict):
         data["settings"]["custom_fonts"] = {}
-    # dedup assets
     seen = set()
     unique = []
     for a in data["assets"]:
@@ -555,12 +560,15 @@ def _icon_grid_picker(prefix, current, on_save):
     for ic in icons:
         for c in ic.get("categories", []):
             all_cats.add(c)
-    cat_options = ["__all__"] + sorted(all_cats)
+    # ترتیب: همه → دسته‌های معنادار به ترتیب CATEGORY_LABELS → سایر
+    cat_order = [k for k in CATEGORY_LABELS.keys() if k in all_cats]
+    cat_order += sorted([c for c in all_cats if c not in CATEGORY_LABELS])
+    cat_options = ["__all__"] + cat_order
 
     c1, c2 = st.columns([2, 3])
     cat = c1.selectbox(
         "📂 دسته", cat_options,
-        format_func=lambda x: "🌐 همه" if x == "__all__" else CATEGORY_LABELS_FA.get(x, x),
+        format_func=lambda x: "🌐 همه" if x == "__all__" else CATEGORY_LABELS.get(x, x),
         key=f"{prefix}_cat",
     )
     s = c2.text_input("🔍", key=f"{prefix}_search",
