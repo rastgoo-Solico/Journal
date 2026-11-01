@@ -88,16 +88,14 @@ def load_fa_icons(cache_v="v4"):
     return FALLBACK_ICONS
     
 def icon_emoji(fa_class):
-    return EMOJI_FALLBACK.get(fa_class, "📁")
-
-DEFAULT_NAV_ICONS = {
-    "overview": {"icon": "fa-chart-pie", "color": "#3b82f6"},
-    "journal": {"icon": "fa-circle-plus", "color": "#10b981"},
-    "usd": {"icon": "fa-dollar-sign", "color": "#f59e0b"},
-    "settings": {"icon": "fa-gear", "color": "#6b7280"},
-}
-NAV_LABELS = {"overview": "نمای کلی", "journal": "افزودن دارایی", "usd": "دلار", "settings": "تنظیمات"}
-NAV_EMOJI = {"overview": "📊", "journal": "➕", "usd": "💵", "settings": "⚙️"}
+    _EMOJI = {
+        "fa-folder": "📁", "fa-coins": "🪙", "fa-wallet": "👛", "fa-dollar-sign": "💲",
+        "fa-building-columns": "🏦", "fa-gem": "💎", "fa-crown": "👑", "fa-house": "🏠",
+        "fa-car": "🚗", "fa-chart-line": "📈", "fa-chart-pie": "📊", "fa-bitcoin-sign": "₿",
+        "fa-briefcase": "💼", "fa-store": "🏪", "fa-sack-dollar": "💰", "fa-fire": "🔥",
+        "fa-bolt": "⚡", "fa-box": "📦", "fa-gear": "⚙️", "fa-circle-plus": "➕",
+    }
+    return _EMOJI.get(fa_class, "📁")
 
 # ================== توابع تاریخ ==================
 def today_jalali_str():
