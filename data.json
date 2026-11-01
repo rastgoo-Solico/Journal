@@ -16,9 +16,9 @@
     },
     {
       "id": "2026-11-01T06:45:43.723208",
-      "rate": 2693000,
+      "rate": 2713000,
       "note": "Wallex",
-      "created_at": "2026-11-01T06:45:43.723208",
+      "created_at": "2026-11-01T06:45:00",
       "created_at_jalali": "1405/08/10"
     }
   ],
@@ -147,6 +147,6 @@
     "custom_fonts": {},
     "dark_mode": false
   },
-  "last_saved": "2026-11-01T09:06:46.500715",
-  "last_saved_jalali": "1405/08/10 - 09:06"
+  "last_saved": "2026-11-01T09:08:52.890357",
+  "last_saved_jalali": "1405/08/10 - 09:08"
 }
