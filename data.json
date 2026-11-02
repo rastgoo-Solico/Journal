@@ -20,6 +20,13 @@
       "note": "Wallex",
       "created_at": "2026-11-01T06:45:00",
       "created_at_jalali": "1405/08/10"
+    },
+    {
+      "id": "2026-11-02T16:09:12.787930",
+      "rate": 2712000,
+      "note": "Wallex",
+      "created_at": "2026-11-02T16:09:12.787930",
+      "created_at_jalali": "1405/08/11"
     }
   ],
   "assets": [
@@ -165,6 +172,6 @@
     },
     "dark_mode": true
   },
-  "last_saved": "2026-11-02T16:07:22.730141",
-  "last_saved_jalali": "1405/08/11 - 16:07"
+  "last_saved": "2026-11-02T16:09:12.788090",
+  "last_saved_jalali": "1405/08/11 - 16:09"
 }
