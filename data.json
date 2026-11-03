@@ -223,8 +223,8 @@
     },
     "dark_mode": true
   },
-  "last_saved": "2026-11-03T14:43:28.949812",
-  "last_saved_jalali": "1405/08/12 - 14:43",
+  "last_saved": "2026-11-03T14:56:39.281979",
+  "last_saved_jalali": "1405/08/12 - 14:56",
   "gold_funds": [
     {
       "id": "2026-11-03T13:25:35.558428",
@@ -238,7 +238,7 @@
           "date_jalali": "1405/08/12",
           "unit_price": 676800.0,
           "ounce_price_usd": 3943.0,
-          "usd_rate_used": 2735000.0,
+          "usd_rate_used": 2688000,
           "note": ""
         }
       ]
