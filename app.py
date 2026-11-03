@@ -1246,14 +1246,31 @@ elif selected == "gold":
             st.markdown(f"### {fund.get('icon', '🥇')} {fund['name']}")
             records = fund.get("records", [])
 
-            # متریک‌های کمترین/میانگین/بیشترین
+                        # متریک‌های کمترین/میانگین/بیشترین — قیمت واحد و تعداد واحد مورد نیاز
             prices = [r["unit_price"] for r in records if r.get("unit_price", 0) > 0]
+            units_list = []
+            for r in records:
+                if r.get("unit_price", 0) > 0 and r.get("usd_rate_used", 0) > 0 and r.get("ounce_price_usd", 0) > 0:
+                    units_list.append((r["ounce_price_usd"] * r["usd_rate_used"]) / r["unit_price"])
+
             if prices:
+                st.markdown("**💰 قیمت واحد صندوق**")
                 mc1, mc2, mc3, mc4 = st.columns(4)
                 mc1.metric("📉 کمترین قیمت", f"{min(prices):,.0f} ریال")
-                mc2.metric("📊 میانگین", f"{sum(prices) / len(prices):,.0f} ریال")
+                mc2.metric("📊 میانگین قیمت", f"{sum(prices) / len(prices):,.0f} ریال")
                 mc3.metric("📈 بیشترین قیمت", f"{max(prices):,.0f} ریال")
                 mc4.metric("📋 تعداد رکورد", len(records))
+
+                if units_list:
+                    st.markdown("**📦 تعداد واحد مورد نیاز (برای یک انس)**")
+                    u1, u2, u3, u4 = st.columns(4)
+                    u1.metric("📉 کمترین واحد", f"{min(units_list):,.2f}")
+                    u2.metric("📊 میانگین واحد", f"{sum(units_list) / len(units_list):,.2f}")
+                    u3.metric("📈 بیشترین واحد", f"{max(units_list):,.2f}")
+                    avg_price = sum(prices) / len(prices)
+                    avg_units = sum(units_list) / len(units_list)
+                    u4.metric("📊 میانگین ارزش", f"{avg_units * avg_price:,.0f} ریال",
+                              help="میانگین واحد × میانگین قیمت")
             else:
                 st.caption("هنوز رکوردی برای این صندوق ثبت نشده.")
 
