@@ -1315,7 +1315,7 @@ elif selected == "gold":
                                 st.session_state.pop(k, None)
                             st.rerun()
 
-            # تاریخچه
+                        # تاریخچه
             if records:
                 st.markdown("**📋 تاریخچه رکوردها**")
                 sorted_recs = sorted(records, key=lambda r: r.get("date_gregorian", ""), reverse=True)
@@ -1335,7 +1335,7 @@ elif selected == "gold":
                 hist_df = pd.DataFrame(hist_rows)
                 render_html_table(hist_df, dark=_dark)
 
-                                with st.expander("✏️ ویرایش / 🗑️ حذف رکوردها"):
+                with st.expander("✏️ ویرایش / 🗑️ حذف رکوردها"):
                     for r in sorted_recs:
                         units = 0
                         if r.get("unit_price", 0) > 0 and r.get("usd_rate_used", 0) > 0:
@@ -1359,7 +1359,7 @@ elif selected == "gold":
                                 er_price = ec2.number_input("قیمت واحد (ریال)", value=float(r["unit_price"]), min_value=0.0, format="%.0f", step=1000.0, key=f"g_ed_price_{r['id']}")
                                 er_ounce = ec3.number_input("انس طلا (دلار)", value=float(r["ounce_price_usd"]), min_value=0.0, format="%.2f", step=1.0, key=f"g_ed_ounce_{r['id']}")
                                 ec4, ec5 = st.columns([2, 3])
-                                er_rate = ec4.number_input("نرخ دلار استفاده‌شده (ریال)", value=float(r.get("usd_rate_used", 0)), min_value=0.0, format="%.0f", step=1000.0, key=f"g_ed_rate_{r['id']}")
+                                er_rate = ec4.number_input("نرخ دلار (ریال)", value=float(r.get("usd_rate_used", 0)), min_value=0.0, format="%.0f", step=1000.0, key=f"g_ed_rate_{r['id']}")
                                 er_note = ec5.text_input("توضیح", value=r.get("note", ""), key=f"g_ed_note_{r['id']}")
                                 if er_price > 0 and er_ounce > 0 and er_rate > 0:
                                     new_units = (er_ounce * er_rate) / er_price
@@ -1394,6 +1394,7 @@ elif selected == "gold":
                                         bump_version(gvk)
                                         save_all(data)
                                         st.rerun()
+            
 
             # حذف صندوق
             with st.expander(f"⚠️ حذف صندوق {fund['name']}"):
