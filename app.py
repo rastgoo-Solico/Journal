@@ -1335,18 +1335,65 @@ elif selected == "gold":
                 hist_df = pd.DataFrame(hist_rows)
                 render_html_table(hist_df, dark=_dark)
 
-                with st.expander("🗑️ حذف رکوردها"):
+                                with st.expander("✏️ ویرایش / 🗑️ حذف رکوردها"):
                     for r in sorted_recs:
-                        dr1, dr2 = st.columns([5, 1])
                         units = 0
                         if r.get("unit_price", 0) > 0 and r.get("usd_rate_used", 0) > 0:
                             units = (r["ounce_price_usd"] * r["usd_rate_used"]) / r["unit_price"]
-                        dr1.caption(f"{r['date_jalali']} — {r['unit_price']:,.0f} ریال — {units:,.0f} واحد")
-                        if dr2.button("🗑️", key=f"del_gold_rec_{fund['id']}_{r['id']}"):
+                        dr1, dr2, dr3 = st.columns([5, 1, 1])
+                        dr1.caption(f"{r['date_jalali']} — {r['unit_price']:,.0f} ریال — {units:,.2f} واحد")
+                        if dr2.button("✏️", key=f"edit_btn_gold_{fund['id']}_{r['id']}", help="ویرایش"):
+                            st.session_state[f"edit_open_gold_{r['id']}"] = not st.session_state.get(f"edit_open_gold_{r['id']}", False)
+                        if dr3.button("🗑️", key=f"del_gold_rec_{fund['id']}_{r['id']}", help="حذف"):
                             fund["records"] = [x for x in fund["records"] if x["id"] != r["id"]]
                             st.session_state.data = data
                             save_all(data)
                             st.rerun()
+
+                        if st.session_state.get(f"edit_open_gold_{r['id']}", False):
+                            gvk = f"v_gold_rec_{r['id']}"
+                            gfk = f"edit_gold_rec_{r['id']}_v{get_version(gvk)}"
+                            with st.form(gfk):
+                                ec1, ec2, ec3 = st.columns([2, 2, 2])
+                                er_date = ec1.text_input("تاریخ (شمسی)", value=r["date_jalali"], key=f"g_ed_date_{r['id']}")
+                                er_price = ec2.number_input("قیمت واحد (ریال)", value=float(r["unit_price"]), min_value=0.0, format="%.0f", step=1000.0, key=f"g_ed_price_{r['id']}")
+                                er_ounce = ec3.number_input("انس طلا (دلار)", value=float(r["ounce_price_usd"]), min_value=0.0, format="%.2f", step=1.0, key=f"g_ed_ounce_{r['id']}")
+                                ec4, ec5 = st.columns([2, 3])
+                                er_rate = ec4.number_input("نرخ دلار استفاده‌شده (ریال)", value=float(r.get("usd_rate_used", 0)), min_value=0.0, format="%.0f", step=1000.0, key=f"g_ed_rate_{r['id']}")
+                                er_note = ec5.text_input("توضیح", value=r.get("note", ""), key=f"g_ed_note_{r['id']}")
+                                if er_price > 0 and er_ounce > 0 and er_rate > 0:
+                                    new_units = (er_ounce * er_rate) / er_price
+                                    st.info(f"📊 تعداد واحد جدید: **{new_units:,.2f}** واحد")
+                                if st.form_submit_button("💾 ذخیره تغییرات", use_container_width=True):
+                                    jd = parse_jalali(er_date)
+                                    if jd is None:
+                                        st.error("تاریخ نامعتبر. مثال: 1403/10/15")
+                                    elif er_price <= 0:
+                                        st.error("قیمت واحد باید > 0.")
+                                    elif er_ounce <= 0:
+                                        st.error("قیمت انس باید > 0.")
+                                    elif er_rate <= 0:
+                                        st.error("نرخ دلار باید > 0.")
+                                    else:
+                                        tp = r["date_gregorian"][11:16] if len(r.get("date_gregorian", "")) >= 16 else "00:00"
+                                        giso = jalali_to_gregorian_iso(jd, tp)
+                                        for i, x in enumerate(fund["records"]):
+                                            if x["id"] == r["id"]:
+                                                fund["records"][i] = {
+                                                    "id": r["id"],
+                                                    "date_gregorian": giso,
+                                                    "date_jalali": jd.strftime("%Y/%m/%d"),
+                                                    "unit_price": er_price,
+                                                    "ounce_price_usd": er_ounce,
+                                                    "usd_rate_used": er_rate,
+                                                    "note": er_note.strip(),
+                                                }
+                                                break
+                                        st.session_state.data = data
+                                        st.session_state[f"edit_open_gold_{r['id']}"] = False
+                                        bump_version(gvk)
+                                        save_all(data)
+                                        st.rerun()
 
             # حذف صندوق
             with st.expander(f"⚠️ حذف صندوق {fund['name']}"):
