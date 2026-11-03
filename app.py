@@ -17,45 +17,30 @@ DEFAULT_NAV_ICONS = {
     "overview": {"icon": "fa-chart-pie", "color": "#3b82f6"},
     "journal": {"icon": "fa-circle-plus", "color": "#10b981"},
     "usd": {"icon": "fa-dollar-sign", "color": "#f59e0b"},
+    "gold": {"icon": "fa-coins", "color": "#eab308"},
     "settings": {"icon": "fa-gear", "color": "#6b7280"},
 }
-NAV_LABELS = {"overview": "نمای کلی", "journal": "افزودن دارایی", "usd": "دلار", "settings": "تنظیمات"}
-NAV_EMOJI = {"overview": "📊", "journal": "➕", "usd": "💵", "settings": "⚙️"}
+NAV_LABELS = {"overview": "نمای کلی", "journal": "افزودن دارایی", "usd": "دلار", "gold": "صندوق‌های طلا", "settings": "تنظیمات"}
+NAV_EMOJI = {"overview": "📊", "journal": "➕", "usd": "💵", "gold": "🥇", "settings": "⚙️"}
 
 FALLBACK_ICONS = [
-    {"class": "fa-folder", "label": "Folder"},
-    {"class": "fa-coins", "label": "Coins"},
-    {"class": "fa-wallet", "label": "Wallet"},
-    {"class": "fa-money-bill-wave", "label": "Money"},
-    {"class": "fa-dollar-sign", "label": "Dollar"},
-    {"class": "fa-building-columns", "label": "Bank"},
-    {"class": "fa-piggy-bank", "label": "Piggy Bank"},
-    {"class": "fa-vault", "label": "Vault"},
-    {"class": "fa-gem", "label": "Gem"},
-    {"class": "fa-crown", "label": "Crown"},
-    {"class": "fa-house", "label": "House"},
-    {"class": "fa-building", "label": "Building"},
-    {"class": "fa-car", "label": "Car"},
-    {"class": "fa-chart-line", "label": "Chart Line"},
-    {"class": "fa-chart-pie", "label": "Chart Pie"},
-    {"class": "fa-bitcoin-sign", "label": "Bitcoin"},
-    {"class": "fa-ethereum", "label": "Ethereum"},
-    {"class": "fa-landmark", "label": "Landmark"},
-    {"class": "fa-industry", "label": "Industry"},
-    {"class": "fa-seedling", "label": "Seedling"},
-    {"class": "fa-briefcase", "label": "Briefcase"},
-    {"class": "fa-store", "label": "Store"},
-    {"class": "fa-sack-dollar", "label": "Sack Dollar"},
-    {"class": "fa-receipt", "label": "Receipt"},
-    {"class": "fa-tag", "label": "Tag"},
-    {"class": "fa-fire", "label": "Fire"},
-    {"class": "fa-bolt", "label": "Bolt"},
-    {"class": "fa-box", "label": "Box"},
-    {"class": "fa-gear", "label": "Gear"},
-    {"class": "fa-circle-plus", "label": "Circle Plus"},
+    {"class": "fa-folder", "label": "Folder"}, {"class": "fa-coins", "label": "Coins"},
+    {"class": "fa-wallet", "label": "Wallet"}, {"class": "fa-money-bill-wave", "label": "Money"},
+    {"class": "fa-dollar-sign", "label": "Dollar"}, {"class": "fa-building-columns", "label": "Bank"},
+    {"class": "fa-piggy-bank", "label": "Piggy Bank"}, {"class": "fa-vault", "label": "Vault"},
+    {"class": "fa-gem", "label": "Gem"}, {"class": "fa-crown", "label": "Crown"},
+    {"class": "fa-house", "label": "House"}, {"class": "fa-building", "label": "Building"},
+    {"class": "fa-car", "label": "Car"}, {"class": "fa-chart-line", "label": "Chart Line"},
+    {"class": "fa-chart-pie", "label": "Chart Pie"}, {"class": "fa-bitcoin-sign", "label": "Bitcoin"},
+    {"class": "fa-ethereum", "label": "Ethereum"}, {"class": "fa-landmark", "label": "Landmark"},
+    {"class": "fa-industry", "label": "Industry"}, {"class": "fa-seedling", "label": "Seedling"},
+    {"class": "fa-briefcase", "label": "Briefcase"}, {"class": "fa-store", "label": "Store"},
+    {"class": "fa-sack-dollar", "label": "Sack Dollar"}, {"class": "fa-receipt", "label": "Receipt"},
+    {"class": "fa-tag", "label": "Tag"}, {"class": "fa-fire", "label": "Fire"},
+    {"class": "fa-bolt", "label": "Bolt"}, {"class": "fa-box", "label": "Box"},
+    {"class": "fa-gear", "label": "Gear"}, {"class": "fa-circle-plus", "label": "Circle Plus"},
 ]
 
-# ================== دسته‌بندی معنادار مالی ==================
 CATEGORY_KEYWORDS = {
     "money": ["coin", "dollar", "money", "wallet", "bank", "cash", "currency",
               "credit-card", "payment", "receipt", "invoice", "sack", "piggy",
@@ -118,7 +103,6 @@ CATEGORY_LABELS = {
 }
 
 def categorize_icon(icon_class, label):
-    """دسته‌بندی معنادار بر اساس کاربرد مالی"""
     text = f"{icon_class} {label}".lower()
     cats = []
     for cat, keywords in CATEGORY_KEYWORDS.items():
@@ -339,7 +323,7 @@ def verify_github_save(expected_data):
 # ================== مهاجرت داده ==================
 def migrate_data(data):
     if not isinstance(data, dict) or not data:
-        return {"assets": [], "usd_rates": [], "settings": {
+        return {"assets": [], "usd_rates": [], "gold_funds": [], "settings": {
             "font": "vazirmatn", "nav_icons": DEFAULT_NAV_ICONS.copy(),
             "custom_fonts": {}, "dark_mode": False}}
     if "usd_rates" not in data or not isinstance(data.get("usd_rates"), list):
@@ -369,6 +353,8 @@ def migrate_data(data):
         data["assets"] = []
     if "usd_rates" not in data or not isinstance(data.get("usd_rates"), list):
         data["usd_rates"] = []
+    if "gold_funds" not in data or not isinstance(data.get("gold_funds"), list):
+        data["gold_funds"] = []
     if "settings" not in data or not isinstance(data.get("settings"), dict):
         data["settings"] = {"font": "vazirmatn", "nav_icons": DEFAULT_NAV_ICONS.copy(),
                             "custom_fonts": {}, "dark_mode": False}
@@ -392,13 +378,20 @@ def migrate_data(data):
             a["icon"] = "fa-folder"
         a.setdefault("color", "#3b82f6")
         a.setdefault("overview_emoji", "")
+    seen_g = set()
+    unique_g = []
+    for gf in data["gold_funds"]:
+        if gf.get("id") and gf["id"] not in seen_g:
+            seen_g.add(gf["id"])
+            unique_g.append(gf)
+    data["gold_funds"] = unique_g
     return data
 
 def load_all():
     local = load_local_file()
     gh = load_github_file()
-    l_has = local and (local.get("assets") or local.get("usd_rates"))
-    g_has = gh and (gh.get("assets") or gh.get("usd_rates"))
+    l_has = local and (local.get("assets") or local.get("usd_rates") or local.get("gold_funds"))
+    g_has = gh and (gh.get("assets") or gh.get("usd_rates") or gh.get("gold_funds"))
     if l_has and g_has:
         l_saved = local.get("last_saved", "")
         g_saved = gh.get("last_saved", "")
@@ -553,14 +546,13 @@ def render_html_table(df, dark=False):
     html += '</tbody></table></div>'
     st.markdown(html, unsafe_allow_html=True)
 
-# ================== گرید آیکون با دسته‌بندی ==================
+# ================== گرید آیکون ==================
 def _icon_grid_picker(prefix, current, on_save):
     icons = load_fa_icons()
     all_cats = set()
     for ic in icons:
         for c in ic.get("categories", []):
             all_cats.add(c)
-    # ترتیب: همه → دسته‌های معنادار به ترتیب CATEGORY_LABELS → سایر
     cat_order = [k for k in CATEGORY_LABELS.keys() if k in all_cats]
     cat_order += sorted([c for c in all_cats if c not in CATEGORY_LABELS])
     cat_options = ["__all__"] + cat_order
@@ -595,7 +587,6 @@ def _icon_grid_picker(prefix, current, on_save):
     display = filtered[page * per_page:(page + 1) * per_page]
 
     st.caption(f"**{total}** آیکون — صفحه **{page + 1}** از **{pages}**")
-
     if total == 0:
         st.info("آیکونی یافت نشد.")
         return
@@ -662,6 +653,7 @@ st.session_state.data = migrate_data(st.session_state.data)
 data = st.session_state.data
 data.setdefault("assets", [])
 data.setdefault("usd_rates", [])
+data.setdefault("gold_funds", [])
 
 inject_app(data)
 _dark = get_settings(data)["dark_mode"]
@@ -736,11 +728,12 @@ with st.sidebar:
                 st.error(f"فایل معتبر نیست: {e}")
 
 # ================== ناوبری ==================
-nav_options = ["overview", "journal", "usd"] + [f"asset_{a['id']}" for a in assets] + ["settings"]
+nav_options = ["overview", "journal", "usd", "gold"] + [f"asset_{a['id']}" for a in assets] + ["settings"]
 nav_labels = {
     "overview": f"{NAV_EMOJI['overview']} {NAV_LABELS['overview']}",
     "journal": f"{NAV_EMOJI['journal']} {NAV_LABELS['journal']}",
     "usd": f"{NAV_EMOJI['usd']} {NAV_LABELS['usd']}",
+    "gold": f"{NAV_EMOJI['gold']} {NAV_LABELS['gold']}",
     "settings": f"{NAV_EMOJI['settings']} {NAV_LABELS['settings']}",
 }
 for a in assets:
@@ -863,7 +856,7 @@ def render_settings_page(data):
     with t_nav:
         st.subheader("🎨 آیکون منو")
         st.caption("روی هر آیکون کلیک کنید. ✅ = فعلی")
-        for nav_key in ["overview", "journal", "usd", "settings"]:
+        for nav_key in ["overview", "journal", "usd", "gold", "settings"]:
             cfg = settings["nav_icons"].get(nav_key, DEFAULT_NAV_ICONS[nav_key])
             with st.container(border=True):
                 c1, c2 = st.columns([1, 4])
@@ -989,10 +982,12 @@ def render_settings_page(data):
             with c1:
                 st.markdown("**حافظه:**")
                 st.caption(f"دارایی: {len(data.get('assets', []))}")
+                st.caption(f"صندوق طلا: {len(data.get('gold_funds', []))}")
                 st.caption(f"last_saved: {data.get('last_saved', '—')[:19]}")
             with c2:
                 st.markdown("**GitHub:**")
                 st.caption(f"دارایی: {len(gh.get('assets', []))}")
+                st.caption(f"صندوق طلا: {len(gh.get('gold_funds', []))}")
                 st.caption(f"last_saved: {gh.get('last_saved', '—')[:19]}")
             if data.get("last_saved") == gh.get("last_saved"):
                 st.success("✅ یکسان")
@@ -1015,7 +1010,7 @@ def render_settings_page(data):
         c1.metric("دارایی‌ها", len(data.get("assets", [])))
         c2.metric("رکوردها", sum(len(a.get("records", [])) for a in data.get("assets", [])))
         c3.metric("نرخ دلار", len(data.get("usd_rates", [])))
-        c4.metric("فونت‌ها", len(data.get("settings", {}).get("custom_fonts", {})))
+        c4.metric("صندوق طلا", len(data.get("gold_funds", [])))
 
 # ================== صفحه نمای کلی ==================
 if selected == "overview":
@@ -1213,6 +1208,140 @@ elif selected == "usd":
                                 bump_version(vk)
                                 save_all(data)
                                 st.rerun()
+
+# ================== 🥇 صفحه صندوق‌های طلا ==================
+elif selected == "gold":
+    st.header("🥇 صندوق‌های طلا")
+    st.caption(f"📅 {today_jalali_str()}")
+
+    with st.container(border=True):
+        st.subheader("➕ افزودن صندوق جدید")
+        with st.form("add_gold_fund_form", clear_on_submit=True):
+            c1, c2 = st.columns([3, 2])
+            fund_name = c1.text_input("نام صندوق", placeholder="طلا، عیار، لوتوس، ...")
+            fund_icon = c2.text_input("ایموجی", value="🥇", max_chars=4)
+            if st.form_submit_button("💾 ایجاد صندوق", use_container_width=True):
+                if not fund_name.strip():
+                    st.error("نام صندوق را وارد کنید.")
+                else:
+                    fid = datetime.now().isoformat()
+                    data.setdefault("gold_funds", []).append({
+                        "id": fid,
+                        "name": fund_name.strip(),
+                        "icon": (fund_icon.strip() or "🥇")[:4],
+                        "created_at": fid,
+                        "records": []
+                    })
+                    st.session_state.data = data
+                    save_all(data)
+                    st.rerun()
+
+    gold_funds = data.get("gold_funds", [])
+    usd_rate_current, usd_rate_date = get_current_usd_rate(data)
+
+    if not gold_funds:
+        st.info("هنوز صندوقی اضافه نشده. اولین صندوق را از فرم بالا بسازید.")
+    else:
+        for fund in gold_funds:
+            st.markdown(f"### {fund.get('icon', '🥇')} {fund['name']}")
+            records = fund.get("records", [])
+
+            # متریک‌های کمترین/میانگین/بیشترین
+            prices = [r["unit_price"] for r in records if r.get("unit_price", 0) > 0]
+            if prices:
+                mc1, mc2, mc3, mc4 = st.columns(4)
+                mc1.metric("📉 کمترین قیمت", f"{min(prices):,.0f} ریال")
+                mc2.metric("📊 میانگین", f"{sum(prices) / len(prices):,.0f} ریال")
+                mc3.metric("📈 بیشترین قیمت", f"{max(prices):,.0f} ریال")
+                mc4.metric("📋 تعداد رکورد", len(records))
+            else:
+                st.caption("هنوز رکوردی برای این صندوق ثبت نشده.")
+
+            # فرم افزودن رکورد (بدون form برای پیش‌نمایش زنده)
+            with st.expander(f"➕ افزودن رکورد قیمت برای {fund['name']}", expanded=(len(records) == 0)):
+                if usd_rate_current is None:
+                    st.warning("⚠️ ابتدا نرخ دلار را در صفحه «💵 دلار» ثبت کنید.")
+                else:
+                    st.caption(f"نرخ دلار فعلی که ذخیره می‌شود: **{usd_rate_current:,.0f} ریال** ({usd_rate_date})")
+                    cg1, cg2, cg3 = st.columns([2, 2, 2])
+                    g_date = cg1.text_input("تاریخ (شمسی)", value=today_jalali_str(), key=f"gdate_{fund['id']}")
+                    g_price = cg2.number_input("قیمت واحد صندوق (ریال)", min_value=0.0, format="%.0f", step=1000.0, key=f"gprice_{fund['id']}")
+                    g_ounce = cg3.number_input("قیمت انس طلا (دلار)", min_value=0.0, format="%.2f", step=1.0, value=2000.0, key=f"gounce_{fund['id']}")
+                    g_note = st.text_input("توضیح (اختیاری)", key=f"gnote_{fund['id']}")
+
+                    if g_price > 0 and g_ounce > 0:
+                        units_needed = (g_ounce * usd_rate_current) / g_price
+                        st.success(f"📊 **تعداد واحد مورد نیاز:** {units_needed:,.2f} واحد (یک انس طلا = این تعداد واحد صندوق)")
+
+                    if st.button("💾 ثبت رکورد", key=f"gsave_{fund['id']}", use_container_width=True):
+                        jd = parse_jalali(g_date)
+                        if jd is None:
+                            st.error("تاریخ نامعتبر. مثال: 1403/10/15")
+                        elif g_price <= 0:
+                            st.error("قیمت واحد باید > 0.")
+                        elif g_ounce <= 0:
+                            st.error("قیمت انس باید > 0.")
+                        else:
+                            giso = jalali_to_gregorian_iso(jd, datetime.now().strftime("%H:%M"))
+                            fund.setdefault("records", []).append({
+                                "id": datetime.now().isoformat(),
+                                "date_gregorian": giso,
+                                "date_jalali": jd.strftime("%Y/%m/%d"),
+                                "unit_price": g_price,
+                                "ounce_price_usd": g_ounce,
+                                "usd_rate_used": usd_rate_current,
+                                "note": g_note.strip(),
+                            })
+                            st.session_state.data = data
+                            save_all(data)
+                            for k in [f"gdate_{fund['id']}", f"gprice_{fund['id']}", f"gounce_{fund['id']}", f"gnote_{fund['id']}"]:
+                                st.session_state.pop(k, None)
+                            st.rerun()
+
+            # تاریخچه
+            if records:
+                st.markdown("**📋 تاریخچه رکوردها**")
+                sorted_recs = sorted(records, key=lambda r: r.get("date_gregorian", ""), reverse=True)
+                hist_rows = []
+                for r in sorted_recs:
+                    units = 0
+                    if r.get("unit_price", 0) > 0 and r.get("usd_rate_used", 0) > 0:
+                        units = (r["ounce_price_usd"] * r["usd_rate_used"]) / r["unit_price"]
+                    hist_rows.append({
+                        "تاریخ": r["date_jalali"],
+                        "قیمت واحد (ریال)": f"{r['unit_price']:,.0f}",
+                        "انس طلا (دلار)": f"${r['ounce_price_usd']:,.2f}",
+                        "نرخ دلار (ریال)": f"{r['usd_rate_used']:,.0f}",
+                        "واحد مورد نیاز": f"{units:,.2f}",
+                        "توضیح": r.get("note", "") or "—",
+                    })
+                hist_df = pd.DataFrame(hist_rows)
+                render_html_table(hist_df, dark=_dark)
+
+                with st.expander("🗑️ حذف رکوردها"):
+                    for r in sorted_recs:
+                        dr1, dr2 = st.columns([5, 1])
+                        units = 0
+                        if r.get("unit_price", 0) > 0 and r.get("usd_rate_used", 0) > 0:
+                            units = (r["ounce_price_usd"] * r["usd_rate_used"]) / r["unit_price"]
+                        dr1.caption(f"{r['date_jalali']} — {r['unit_price']:,.0f} ریال — {units:,.0f} واحد")
+                        if dr2.button("🗑️", key=f"del_gold_rec_{fund['id']}_{r['id']}"):
+                            fund["records"] = [x for x in fund["records"] if x["id"] != r["id"]]
+                            st.session_state.data = data
+                            save_all(data)
+                            st.rerun()
+
+            # حذف صندوق
+            with st.expander(f"⚠️ حذف صندوق {fund['name']}"):
+                _fi = next((i for i, x in enumerate(data["gold_funds"]) if x["id"] == fund["id"]), 0)
+                confirm = st.checkbox("مطمئنم", key=f"confirm_del_gold_{fund['id']}_{_fi}")
+                if st.button("🗑️ حذف صندوق", disabled=not confirm, key=f"del_gold_fund_{fund['id']}_{_fi}", use_container_width=True):
+                    data["gold_funds"] = [x for x in data["gold_funds"] if x["id"] != fund["id"]]
+                    st.session_state.data = data
+                    save_all(data)
+                    st.rerun()
+
+            st.divider()
 
 # ================== صفحه تنظیمات ==================
 elif selected == "settings":
