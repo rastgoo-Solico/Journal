@@ -204,6 +204,10 @@
       "settings": {
         "icon": "fa-gear",
         "color": "#6b7280"
+      },
+      "gold": {
+        "icon": "fa-coins",
+        "color": "#eab308"
       }
     },
     "custom_fonts": {
@@ -219,6 +223,15 @@
     },
     "dark_mode": false
   },
-  "last_saved": "2026-11-03T09:45:48.860552",
-  "last_saved_jalali": "1405/08/12 - 09:45"
+  "last_saved": "2026-11-03T13:25:35.558519",
+  "last_saved_jalali": "1405/08/12 - 13:25",
+  "gold_funds": [
+    {
+      "id": "2026-11-03T13:25:35.558428",
+      "name": "عیار",
+      "icon": "🥇",
+      "created_at": "2026-11-03T13:25:35.558428",
+      "records": []
+    }
+  ]
 }
