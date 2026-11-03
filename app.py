@@ -77,29 +77,17 @@ CATEGORY_KEYWORDS = {
     "symbol": ["circle-check", "circle-xmark", "circle-plus", "circle-minus",
                "circle", "square", "triangle", "heart", "plus", "minus",
                "equals", "question", "info", "exclamation", "ban", "check"],
-    "time": ["clock", "calendar", "time", "hourglass", "stopwatch", "timer",
-             "watch"],
+    "time": ["clock", "calendar", "time", "hourglass", "stopwatch", "timer", "watch"],
     "nature": ["fire", "bolt", "sun", "leaf", "tree", "seedling", "water",
-               "droplet", "wind", "snow", "cloud", "moon", "snowflake",
-               "mountain"],
+               "droplet", "wind", "snow", "cloud", "moon", "snowflake", "mountain"],
 }
 
 CATEGORY_LABELS = {
-    "money": "💰 پول و ارز",
-    "chart": "📊 سرمایه و نمودار",
-    "gems": "🥇 طلا و جواهر",
-    "building": "🏢 ملک و ساختمان",
-    "transport": "🚗 حمل و نقل",
-    "goods": "📦 کالا",
-    "business": "💼 کسب و کار",
-    "file": "📁 فایل و سند",
-    "user": "👤 کاربر",
-    "system": "⚙️ تنظیمات",
-    "media": "🎬 رسانه",
-    "symbol": "🔷 نماد",
-    "time": "⏰ زمان",
-    "nature": "🌿 طبیعت",
-    "other": "📌 سایر",
+    "money": "💰 پول و ارز", "chart": "📊 سرمایه و نمودار", "gems": "🥇 طلا و جواهر",
+    "building": "🏢 ملک و ساختمان", "transport": "🚗 حمل و نقل", "goods": "📦 کالا",
+    "business": "💼 کسب و کار", "file": "📁 فایل و سند", "user": "👤 کاربر",
+    "system": "⚙️ تنظیمات", "media": "🎬 رسانه", "symbol": "🔷 نماد",
+    "time": "⏰ زمان", "nature": "🌿 طبیعت", "other": "📌 سایر",
 }
 
 def categorize_icon(icon_class, label):
@@ -130,10 +118,7 @@ AUTH_TOKEN = get_auth_token()
 @st.cache_data(ttl=86400, show_spinner=False)
 def load_fa_icons(cache_v="v7"):
     try:
-        r = requests.get(
-            "https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/metadata/icons.json",
-            timeout=15,
-        )
+        r = requests.get("https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/metadata/icons.json", timeout=15)
         if r.status_code == 200:
             meta = r.json()
             icons = []
@@ -141,18 +126,14 @@ def load_fa_icons(cache_v="v7"):
                 if "solid" not in info.get("free", []):
                     continue
                 label = info.get("label", name)
-                icons.append({
-                    "class": f"fa-{name}",
-                    "label": label,
-                    "categories": categorize_icon(f"fa-{name}", label),
-                })
+                icons.append({"class": f"fa-{name}", "label": label,
+                              "categories": categorize_icon(f"fa-{name}", label)})
             if icons:
                 return sorted(icons, key=lambda x: x["label"].lower())
     except Exception:
         pass
     return [{"class": ic["class"], "label": ic["label"],
-             "categories": categorize_icon(ic["class"], ic["label"])}
-            for ic in FALLBACK_ICONS]
+             "categories": categorize_icon(ic["class"], ic["label"])} for ic in FALLBACK_ICONS]
 
 def icon_emoji(fa_class):
     _EMOJI = {
@@ -488,6 +469,33 @@ def get_version(key):
 def bump_version(key):
     st.session_state[key] = st.session_state.get(key, 0) + 1
 
+def sync_usd_rates_to_gold_funds(data):
+    """بازمحاسبه usd_rate_used برای همه رکوردهای صندوق طلا بر اساس نرخ‌های موجود.
+    برای هر رکورد، آخرین نرخی که تاریخش ≤ تاریخ رکورد باشد استفاده می‌شود.
+    برمی‌گرداند: (تعداد به‌روزشده, تعداد بدون نرخ)
+    """
+    rates = sorted(data.get("usd_rates", []), key=lambda x: x.get("created_at", ""))
+    updated = 0
+    missing = 0
+    for gf in data.get("gold_funds", []):
+        for rec in gf.get("records", []):
+            rec_date = rec.get("date_gregorian", "")[:10]
+            if not rec_date:
+                continue
+            rate_at = None
+            for ur in rates:
+                if ur.get("created_at", "")[:10] <= rec_date:
+                    rate_at = ur["rate"]
+                else:
+                    break
+            if rate_at is not None:
+                if rec.get("usd_rate_used") != rate_at:
+                    rec["usd_rate_used"] = rate_at
+                    updated += 1
+            else:
+                missing += 1
+    return updated, missing
+
 def build_portfolio_timeline(data):
     assets = data.get("assets", [])
     usd_rates = sorted(data.get("usd_rates", []), key=lambda x: x.get("created_at", ""))
@@ -558,13 +566,10 @@ def _icon_grid_picker(prefix, current, on_save):
     cat_options = ["__all__"] + cat_order
 
     c1, c2 = st.columns([2, 3])
-    cat = c1.selectbox(
-        "📂 دسته", cat_options,
-        format_func=lambda x: "🌐 همه" if x == "__all__" else CATEGORY_LABELS.get(x, x),
-        key=f"{prefix}_cat",
-    )
-    s = c2.text_input("🔍", key=f"{prefix}_search",
-                     placeholder="جستجو...", label_visibility="collapsed")
+    cat = c1.selectbox("📂 دسته", cat_options,
+                       format_func=lambda x: "🌐 همه" if x == "__all__" else CATEGORY_LABELS.get(x, x),
+                       key=f"{prefix}_cat")
+    s = c2.text_input("🔍", key=f"{prefix}_search", placeholder="جستجو...", label_visibility="collapsed")
 
     filtered = icons if cat == "__all__" else [i for i in icons if cat in i.get("categories", [])]
     if s:
@@ -603,8 +608,7 @@ def _icon_grid_picker(prefix, current, on_save):
                     f'<i class="fa-solid {ic["class"]}" style="font-size:1.6rem; color:#3b82f6;"></i>'
                     f'</div>', unsafe_allow_html=True)
                 lbl = "✅" if is_cur else "انتخاب"
-                if st.button(lbl, key=f"{prefix}_btn_{ic['class']}",
-                            use_container_width=True, disabled=is_cur):
+                if st.button(lbl, key=f"{prefix}_btn_{ic['class']}", use_container_width=True, disabled=is_cur):
                     on_save(ic["class"])
                     st.rerun()
 
@@ -1148,6 +1152,9 @@ elif selected == "usd":
                     data.setdefault("usd_rates", []).append({
                         "id": now, "rate": new_rate, "note": note.strip(),
                         "created_at": now, "created_at_jalali": today_jalali_str()})
+                    _u, _m = sync_usd_rates_to_gold_funds(data)
+                    if _u > 0:
+                        st.toast(f"🔄 {_u} رکورد صندوق طلا همگام شد", icon="✅")
                     st.session_state.data = data
                     save_all(data)
                     st.rerun()
@@ -1182,6 +1189,11 @@ elif selected == "usd":
                     st.session_state[f"edit_open_rate_{r['id']}"] = not st.session_state.get(f"edit_open_rate_{r['id']}", False)
                 if c6.button("🗑️", key=f"delrate_{r['id']}"):
                     data["usd_rates"] = [x for x in data["usd_rates"] if x["id"] != r["id"]]
+                    _u, _m = sync_usd_rates_to_gold_funds(data)
+                    if _u > 0:
+                        st.toast(f"🔄 {_u} رکورد صندوق طلا بازمحاسبه شد", icon="✅")
+                    if _m > 0:
+                        st.warning(f"⚠️ {_m} رکورد صندوق طلا بدون نرخ معتبر")
                     st.session_state.data = data
                     save_all(data)
                     st.rerun()
@@ -1203,6 +1215,11 @@ elif selected == "usd":
                                         data["usd_rates"][i] = {"id": r["id"], "rate": er_rate, "note": er_note.strip(),
                                                                "created_at": giso, "created_at_jalali": jd.strftime("%Y/%m/%d")}
                                         break
+                                _u, _m = sync_usd_rates_to_gold_funds(data)
+                                if _u > 0:
+                                    st.toast(f"🔄 {_u} رکورد صندوق طلا همگام شد", icon="✅")
+                                if _m > 0:
+                                    st.warning(f"⚠️ {_m} رکورد بدون نرخ معتبر")
                                 st.session_state.data = data
                                 st.session_state[f"edit_open_rate_{r['id']}"] = False
                                 bump_version(vk)
@@ -1213,6 +1230,12 @@ elif selected == "usd":
 elif selected == "gold":
     st.header("🥇 صندوق‌های طلا")
     st.caption(f"📅 {today_jalali_str()}")
+
+    _sync_u, _sync_m = sync_usd_rates_to_gold_funds(data)
+    if _sync_u > 0:
+        st.session_state.data = data
+    if _sync_m > 0:
+        st.warning(f"⚠️ {_sync_m} رکورد تاریخشان قبل از اولین نرخ دلار ثبت شده است.")
 
     with st.container(border=True):
         st.subheader("➕ افزودن صندوق جدید")
@@ -1226,12 +1249,9 @@ elif selected == "gold":
                 else:
                     fid = datetime.now().isoformat()
                     data.setdefault("gold_funds", []).append({
-                        "id": fid,
-                        "name": fund_name.strip(),
+                        "id": fid, "name": fund_name.strip(),
                         "icon": (fund_icon.strip() or "🥇")[:4],
-                        "created_at": fid,
-                        "records": []
-                    })
+                        "created_at": fid, "records": []})
                     st.session_state.data = data
                     save_all(data)
                     st.rerun()
@@ -1240,13 +1260,12 @@ elif selected == "gold":
     usd_rate_current, usd_rate_date = get_current_usd_rate(data)
 
     if not gold_funds:
-        st.info("هنوز صندوقی اضافه نشده. اولین صندوق را از فرم بالا بسازید.")
+        st.info("هنوز صندوقی اضافه نشده.")
     else:
         for fund in gold_funds:
             st.markdown(f"### {fund.get('icon', '🥇')} {fund['name']}")
             records = fund.get("records", [])
 
-                        # متریک‌های کمترین/میانگین/بیشترین — قیمت واحد و تعداد واحد مورد نیاز
             prices = [r["unit_price"] for r in records if r.get("unit_price", 0) > 0]
             units_list = []
             for r in records:
@@ -1260,7 +1279,6 @@ elif selected == "gold":
                 mc2.metric("📊 میانگین قیمت", f"{sum(prices) / len(prices):,.0f} ریال")
                 mc3.metric("📈 بیشترین قیمت", f"{max(prices):,.0f} ریال")
                 mc4.metric("📋 تعداد رکورد", len(records))
-
                 if units_list:
                     st.markdown("**📦 تعداد واحد مورد نیاز (برای یک انس)**")
                     u1, u2, u3, u4 = st.columns(4)
@@ -1269,58 +1287,45 @@ elif selected == "gold":
                     u3.metric("📈 بیشترین واحد", f"{max(units_list):,.2f}")
                     avg_price = sum(prices) / len(prices)
                     avg_units = sum(units_list) / len(units_list)
-                    u4.metric("📊 میانگین ارزش", f"{avg_units * avg_price:,.0f} ریال",
-                              help="میانگین واحد × میانگین قیمت")
+                    u4.metric("📊 میانگین ارزش", f"{avg_units * avg_price:,.0f} ریال", help="میانگین واحد × میانگین قیمت")
             else:
-                st.caption("هنوز رکوردی برای این صندوق ثبت نشده.")
+                st.caption("هنوز رکوردی ثبت نشده.")
 
-            # فرم افزودن رکورد (بدون form برای پیش‌نمایش زنده)
-            with st.expander(f"➕ افزودن رکورد قیمت برای {fund['name']}", expanded=(len(records) == 0)):
+            with st.expander(f"➕ افزودن رکورد برای {fund['name']}", expanded=(len(records) == 0)):
                 if usd_rate_current is None:
                     st.warning("⚠️ ابتدا نرخ دلار را در صفحه «💵 دلار» ثبت کنید.")
                 else:
-                    st.caption(f"نرخ دلار فعلی که ذخیره می‌شود: **{usd_rate_current:,.0f} ریال** ({usd_rate_date})")
+                    st.caption(f"نرخ دلار فعلی: **{usd_rate_current:,.0f} ریال** ({usd_rate_date})")
                     cg1, cg2, cg3 = st.columns([2, 2, 2])
                     g_date = cg1.text_input("تاریخ (شمسی)", value=today_jalali_str(), key=f"gdate_{fund['id']}")
-                    g_price = cg2.number_input("قیمت واحد صندوق (ریال)", min_value=0.0, format="%.0f", step=1000.0, key=f"gprice_{fund['id']}")
-                    g_ounce = cg3.number_input("قیمت انس طلا (دلار)", min_value=0.0, format="%.2f", step=1.0, value=2000.0, key=f"gounce_{fund['id']}")
+                    g_price = cg2.number_input("قیمت واحد (ریال)", min_value=0.0, format="%.0f", step=1000.0, key=f"gprice_{fund['id']}")
+                    g_ounce = cg3.number_input("انس طلا (دلار)", min_value=0.0, format="%.2f", step=1.0, value=2000.0, key=f"gounce_{fund['id']}")
                     g_note = st.text_input("توضیح (اختیاری)", key=f"gnote_{fund['id']}")
-
                     if g_price > 0 and g_ounce > 0:
                         units_needed = (g_ounce * usd_rate_current) / g_price
-                        st.success(f"📊 **تعداد واحد مورد نیاز:** {units_needed:,.2f} واحد (یک انس طلا = این تعداد واحد صندوق)")
-
+                        st.success(f"📊 **تعداد واحد مورد نیاز:** {units_needed:,.2f} واحد")
                     if st.button("💾 ثبت رکورد", key=f"gsave_{fund['id']}", use_container_width=True):
                         jd = parse_jalali(g_date)
                         if jd is None:
-                            st.error("تاریخ نامعتبر. مثال: 1403/10/15")
-                        elif g_price <= 0:
-                            st.error("قیمت واحد باید > 0.")
-                        elif g_ounce <= 0:
-                            st.error("قیمت انس باید > 0.")
+                            st.error("تاریخ نامعتبر.")
+                        elif g_price <= 0 or g_ounce <= 0:
+                            st.error("مقادیر باید > 0 باشند.")
                         else:
                             giso = jalali_to_gregorian_iso(jd, datetime.now().strftime("%H:%M"))
                             fund.setdefault("records", []).append({
-                                "id": datetime.now().isoformat(),
-                                "date_gregorian": giso,
+                                "id": datetime.now().isoformat(), "date_gregorian": giso,
                                 "date_jalali": jd.strftime("%Y/%m/%d"),
-                                "unit_price": g_price,
-                                "ounce_price_usd": g_ounce,
-                                "usd_rate_used": usd_rate_current,
-                                "note": g_note.strip(),
-                            })
+                                "unit_price": g_price, "ounce_price_usd": g_ounce,
+                                "usd_rate_used": usd_rate_current, "note": g_note.strip()})
                             st.session_state.data = data
                             save_all(data)
                             for k in [f"gdate_{fund['id']}", f"gprice_{fund['id']}", f"gounce_{fund['id']}", f"gnote_{fund['id']}"]:
                                 st.session_state.pop(k, None)
                             st.rerun()
 
-                        # تاریخچه
-                        # تاریخچه
             if records:
                 sorted_recs = sorted(records, key=lambda r: r.get("date_gregorian", ""), reverse=True)
                 st.markdown("**📋 تاریخچه رکوردها**")
-
                 hc = st.columns([2, 2, 2, 2, 2, 3, 1, 1])
                 hc[0].caption("**تاریخ**")
                 hc[1].caption("**قیمت واحد**")
@@ -1336,7 +1341,6 @@ elif selected == "gold":
                     units = 0
                     if r.get("unit_price", 0) > 0 and r.get("usd_rate_used", 0) > 0:
                         units = (r["ounce_price_usd"] * r["usd_rate_used"]) / r["unit_price"]
-
                     rc = st.columns([2, 2, 2, 2, 2, 3, 1, 1])
                     rc[0].markdown(f"📅 {r['date_jalali']}")
                     rc[1].markdown(f"{r['unit_price']:,.0f}")
@@ -1344,7 +1348,6 @@ elif selected == "gold":
                     rc[3].markdown(f"{r.get('usd_rate_used', 0):,.0f}")
                     rc[4].markdown(f"**{units:,.2f}**")
                     rc[5].caption(r.get("note", "") or "—")
-
                     if rc[6].button("✏️", key=f"edit_btn_gold_{fund['id']}_{r['id']}", help="ویرایش"):
                         st.session_state[f"edit_open_gold_{r['id']}"] = not st.session_state.get(f"edit_open_gold_{r['id']}", False)
                     if rc[7].button("🗑️", key=f"del_gold_rec_{fund['id']}_{r['id']}", help="حذف"):
@@ -1374,15 +1377,10 @@ elif selected == "gold":
                                     giso = jalali_to_gregorian_iso(jd, tp)
                                     for i, x in enumerate(fund["records"]):
                                         if x["id"] == r["id"]:
-                                            fund["records"][i] = {
-                                                "id": r["id"],
-                                                "date_gregorian": giso,
-                                                "date_jalali": jd.strftime("%Y/%m/%d"),
-                                                "unit_price": er_price,
-                                                "ounce_price_usd": er_ounce,
-                                                "usd_rate_used": er_rate,
-                                                "note": er_note.strip(),
-                                            }
+                                            fund["records"][i] = {"id": r["id"], "date_gregorian": giso,
+                                                                  "date_jalali": jd.strftime("%Y/%m/%d"),
+                                                                  "unit_price": er_price, "ounce_price_usd": er_ounce,
+                                                                  "usd_rate_used": er_rate, "note": er_note.strip()}
                                             break
                                     st.session_state.data = data
                                     st.session_state[f"edit_open_gold_{r['id']}"] = False
@@ -1391,9 +1389,8 @@ elif selected == "gold":
                                     st.rerun()
                                 else:
                                     st.error("مقادیر معتبر وارد کنید.")
-
                     st.divider()
-            # حذف صندوق
+
             with st.expander(f"⚠️ حذف صندوق {fund['name']}"):
                 _fi = next((i for i, x in enumerate(data["gold_funds"]) if x["id"] == fund["id"]), 0)
                 confirm = st.checkbox("مطمئنم", key=f"confirm_del_gold_{fund['id']}_{_fi}")
@@ -1402,7 +1399,6 @@ elif selected == "gold":
                     st.session_state.data = data
                     save_all(data)
                     st.rerun()
-
             st.divider()
 
 # ================== صفحه تنظیمات ==================
