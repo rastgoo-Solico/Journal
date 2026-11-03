@@ -223,15 +223,25 @@
     },
     "dark_mode": false
   },
-  "last_saved": "2026-11-03T13:25:35.558519",
-  "last_saved_jalali": "1405/08/12 - 13:25",
+  "last_saved": "2026-11-03T13:28:21.479993",
+  "last_saved_jalali": "1405/08/12 - 13:28",
   "gold_funds": [
     {
       "id": "2026-11-03T13:25:35.558428",
       "name": "عیار",
       "icon": "🥇",
       "created_at": "2026-11-03T13:25:35.558428",
-      "records": []
+      "records": [
+        {
+          "id": "2026-11-03T13:28:21.479917",
+          "date_gregorian": "2026-11-03T13:28:00",
+          "date_jalali": "1405/08/12",
+          "unit_price": 689400.0,
+          "ounce_price_usd": 3943.0,
+          "usd_rate_used": 2735000,
+          "note": ""
+        }
+      ]
     }
   ]
 }
