@@ -1185,9 +1185,29 @@ elif selected == "gold":
     st.header("🥇 صندوق‌های طلا")
     st.caption(f"📅 {today_jalali_str()}")
 
+    # ✅ اندازه فونت تابلوها = ۳۲px
+    st.markdown("""
+    <style>
+        [data-testid="stMainBlockContainer"] [data-testid="stMetricValue"] {
+            font-size: 2rem !important;
+            line-height: 1.2 !important;
+            font-weight: 600 !important;
+        }
+        [data-testid="stMainBlockContainer"] [data-testid="stMetricLabel"] {
+            font-size: 0.8rem !important;
+            font-weight: 500 !important;
+        }
+        [data-testid="stMainBlockContainer"] [data-testid="stMetricDelta"] {
+            font-size: 0.72rem !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
     _sync_u, _sync_m = sync_usd_rates_to_gold_funds(data)
-    if _sync_u > 0: st.session_state.data = data
-    if _sync_m > 0: st.warning(f"⚠️ {_sync_m} رکورد تاریخشان قبل از اولین نرخ دلار ثبت شده است.")
+    if _sync_u > 0:
+        st.session_state.data = data
+    if _sync_m > 0:
+        st.warning(f"⚠️ {_sync_m} رکورد تاریخشان قبل از اولین نرخ دلار ثبت شده است.")
 
     with st.container(border=True):
         st.subheader("➕ افزودن صندوق جدید")
@@ -1196,18 +1216,23 @@ elif selected == "gold":
             fund_name = c1.text_input("نام صندوق", placeholder="طلا، عیار، لوتوس، ...")
             fund_icon = c2.text_input("ایموجی", value="🥇", max_chars=4)
             if st.form_submit_button("💾 ایجاد صندوق", use_container_width=True):
-                if not fund_name.strip(): st.error("نام صندوق را وارد کنید.")
+                if not fund_name.strip():
+                    st.error("نام صندوق را وارد کنید.")
                 else:
                     fid = _short_id()
                     data.setdefault("gold_funds", []).append({
                         "id": fid, "name": fund_name.strip(),
                         "icon": (fund_icon.strip() or "🥇")[:4],
                         "created_at": datetime.now().isoformat(), "records": []})
-                    st.session_state.data = data; save_all(data); st.rerun()
+                    st.session_state.data = data
+                    save_all(data)
+                    st.rerun()
 
     gold_funds = data.get("gold_funds", [])
     usd_rate_current, usd_rate_date = get_current_usd_rate(data)
-    if not gold_funds: st.info("هنوز صندوقی اضافه نشده.")
+
+    if not gold_funds:
+        st.info("هنوز صندوقی اضافه نشده.")
     else:
         for fund in gold_funds:
             st.markdown(f"### {fund.get('icon', '🥇')} {fund['name']}")
@@ -1232,6 +1257,7 @@ elif selected == "gold":
             for r in records:
                 if r.get("unit_price", 0) > 0 and r.get("usd_rate_used", 0) > 0 and r.get("ounce_price_usd", 0) > 0:
                     units_list.append((r["ounce_price_usd"] * r["usd_rate_used"]) / r["unit_price"])
+
             if prices:
                 st.markdown("**💰 قیمت واحد صندوق**")
                 mc1, mc2, mc3, mc4 = st.columns(4)
@@ -1239,14 +1265,17 @@ elif selected == "gold":
                 mc2.metric("📊 میانگین قیمت", f"{sum(prices) / len(prices):,.0f} ریال")
                 mc3.metric("📈 بیشترین قیمت", f"{max(prices):,.0f} ریال")
                 mc4.metric("📋 تعداد رکورد", len(records))
+
                 if units_list:
                     st.markdown("**📦 تعداد واحد مورد نیاز (برای یک انس)**")
                     u1, u2, u3, u4 = st.columns(4)
-                    u1.metric("📉 کمترین واحد", f"{min(units_list):,.2f}")
-                    u2.metric("📊 میانگین واحد", f"{sum(units_list) / len(units_list):,.2f}")
-                    u3.metric("📈 بیشترین واحد", f"{max(units_list):,.2f}")
-                    avg_price = sum(prices) / len(prices); avg_units = sum(units_list) / len(units_list)
+                    u1.metric("📉 کمترین واحد", f"{min(units_list):,.0f}")
+                    u2.metric("📊 میانگین واحد", f"{sum(units_list) / len(units_list):,.0f}")
+                    u3.metric("📈 بیشترین واحد", f"{max(units_list):,.0f}")
+                    avg_price = sum(prices) / len(prices)
+                    avg_units = sum(units_list) / len(units_list)
                     u4.metric("📊 میانگین ارزش", f"{avg_units * avg_price:,.0f} ریال", help="میانگین واحد × میانگین قیمت")
+
                 if analytics and analytics[-1]["usd_equivalent"] is not None:
                     st.markdown("**💵 تحلیل دلاری**")
                     a1, a2, a3, a4 = st.columns(4)
@@ -1281,34 +1310,36 @@ elif selected == "gold":
                                                                 value=float(usd_rate_current), step=1000.0, key=f"calc_rebuy_rate_{fund['id']}")
                         calc_rebuy = calc_c4.number_input("قیمت خرید مجدد (ریال)", min_value=0.0,
                                                            value=float(records[-1]["unit_price"]), step=1000.0, key=f"calc_rebuy_{fund['id']}")
-                        st.markdown("**کارمزدها** (برای محاسبه دقیق‌تر)")
+                        st.markdown("**کارمزدها**")
                         fee_c1, fee_c2, fee_c3 = st.columns(3)
                         fee_sell_pct = fee_c1.number_input("کارمزد فروش صندوق (%)", min_value=0.0, value=0.5, step=0.1, key=f"fee_sell_{fund['id']}")
-                        fee_usd_pct = fee_c2.number_input("اسپرد دلار (٪ هر طرف)", min_value=0.0, value=1.0, step=0.1, key=f"fee_usd_{fund['id']}")
+                        fee_usd_pct = fee_c2.number_input("اسپرد دلار (% هر طرف)", min_value=0.0, value=1.0, step=0.1, key=f"fee_usd_{fund['id']}")
                         fee_buy_pct = fee_c3.number_input("کارمزد خرید صندوق (%)", min_value=0.0, value=0.5, step=0.1, key=f"fee_buy_{fund['id']}")
+
                         if calc_units > 0 and calc_sell > 0 and calc_rebuy_rate > 0 and calc_rebuy > 0:
                             gross_irr = calc_units * calc_sell * (1 - fee_sell_pct / 100)
                             dollars = gross_irr / (calc_rebuy_rate * (1 + fee_usd_pct / 100))
                             irr_back = dollars * calc_rebuy_rate * (1 - fee_usd_pct / 100)
                             new_units = (irr_back / calc_rebuy) * (1 - fee_buy_pct / 100)
                             net_units = new_units - calc_units
-                            net_irr = (new_units - calc_units) * calc_rebuy
+                            net_irr = net_units * calc_rebuy
                             st.divider()
                             r1, r2, r3 = st.columns(3)
                             r1.metric("💵 دلار به‌دست‌آمده", f"${dollars:,.4f}")
                             r2.metric("📦 واحد پس از خرید مجدد", f"{new_units:,.4f}")
                             if net_units > 0:
                                 r3.metric("✅ سود خالص", f"+{net_units:,.4f} واحد", delta=f"{net_irr:+,.0f} ریال")
-                                st.success(f"✅ این آربیتراژ **سودآور** است: **{net_units:,.4f} واحد** بیشتر (معادل {net_irr:,.0f} ریال)")
+                                st.success(f"✅ سودآور: **{net_units:,.4f} واحد** بیشتر (معادل {net_irr:,.0f} ریال)")
                             else:
                                 r3.metric("❌ ضرر خالص", f"{net_units:,.4f} واحد", delta=f"{net_irr:+,.0f} ریال")
-                                st.error(f"❌ این آربیتراژ **ضرر** دارد: {abs(net_units):,.4f} واحد از دست می‌رود")
-                            if net_units > 0 and net_units < calc_units * 0.05:
-                                st.info("💡 سود کمتر از ۵٪ — با کارمزد و اسپرد واقعی، ارزش ریسک ندارد.")
+                                st.error(f"❌ ضرر: {abs(net_units):,.4f} واحد از دست می‌رود")
+                            if 0 < net_units < calc_units * 0.05:
+                                st.info("💡 سود کمتر از ۵٪ — با کارمزد واقعی، ارزش ریسک ندارد.")
 
             # ============ افزودن رکورد ============
             with st.expander(f"➕ افزودن رکورد برای {fund['name']}", expanded=(len(records) == 0)):
-                if usd_rate_current is None: st.warning("⚠️ ابتدا نرخ دلار را در صفحه «💵 دلار» ثبت کنید.")
+                if usd_rate_current is None:
+                    st.warning("⚠️ ابتدا نرخ دلار را در صفحه «💵 دلار» ثبت کنید.")
                 else:
                     st.caption(f"نرخ دلار فعلی: **{usd_rate_current:,.0f} ریال** ({usd_rate_date})")
                     cg1, cg2, cg3 = st.columns([2, 2, 2])
@@ -1319,11 +1350,13 @@ elif selected == "gold":
                     if g_price > 0 and g_ounce > 0:
                         units_needed = (g_ounce * usd_rate_current) / g_price
                         usd_equiv = g_price / usd_rate_current if usd_rate_current > 0 else 0
-                        st.success(f"📊 **واحد مورد نیاز:** {units_needed:,.2f} واحد | **معادل دلاری:** ${usd_equiv:.4f}")
+                        st.success(f"📊 **واحد برای ۱ انس:** {units_needed:,.0f} واحد | **معادل دلاری:** ${usd_equiv:.4f}")
                     if st.button("💾 ثبت رکورد", key=f"gsave_{fund['id']}", use_container_width=True):
                         jd = parse_jalali(g_date)
-                        if jd is None: st.error("تاریخ نامعتبر.")
-                        elif g_price <= 0 or g_ounce <= 0: st.error("مقادیر باید > 0 باشند.")
+                        if jd is None:
+                            st.error("تاریخ نامعتبر.")
+                        elif g_price <= 0 or g_ounce <= 0:
+                            st.error("مقادیر باید > 0 باشند.")
                         else:
                             giso = jalali_to_gregorian_iso(jd, datetime.now().strftime("%H:%M"))
                             fund.setdefault("records", []).append({
@@ -1331,7 +1364,8 @@ elif selected == "gold":
                                 "date_jalali": jd.strftime("%Y/%m/%d"),
                                 "unit_price": g_price, "ounce_price_usd": g_ounce,
                                 "usd_rate_used": usd_rate_current, "note": g_note.strip()})
-                            st.session_state.data = data; save_all(data)
+                            st.session_state.data = data
+                            save_all(data)
                             for k in [f"gdate_{fund['id']}", f"gprice_{fund['id']}", f"gounce_{fund['id']}", f"gnote_{fund['id']}"]:
                                 st.session_state.pop(k, None)
                             st.rerun()
@@ -1339,7 +1373,7 @@ elif selected == "gold":
             # ============ نمودار سه‌خطی نرمال‌شده ============
             if len(records) >= 2 and analytics:
                 st.markdown("**📈 نمودار مقایسه‌ای (نرمال‌شده به ۱۰۰)**")
-                st.caption("خط آبی بالا + خط سبز پایین = تله دلار | خط نارنجی = روند انس جهانی")
+                st.caption("آبی بالا + سبز پایین = تله دلار | نارنجی نقطه‌چین = روند انس جهانی")
                 valid = [a for a in analytics if a["usd_equivalent"] is not None and a["record"].get("ounce_price_usd", 0) > 0]
                 if len(valid) >= 2:
                     base_irr = valid[0]["record"]["unit_price"]
@@ -1365,25 +1399,27 @@ elif selected == "gold":
                         plot_bgcolor="rgba(0,0,0,0)" if _dark else "white",
                         legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5))
                     st.plotly_chart(fig, use_container_width=True)
-                    # تفسیر خودکار
-                    last_irr = irr_index[-1]; last_usd = usd_index[-1]
+                    last_irr = irr_index[-1]
+                    last_usd = usd_index[-1]
                     if last_irr > 105 and last_usd < 95:
-                        st.error(f"🔴 **تله دلار:** قیمت ریالی {last_irr-100:+.1f}% رشد کرده ولی معادل دلاری {last_usd-100:+.1f}% افت کرده. **فروش بدون خرید دلار = ضرر دلاری**")
+                        st.error(f"🔴 **تله دلار:** ریالی {last_irr-100:+.1f}% ولی دلاری {last_usd-100:+.1f}%. **فروش بدون خرید دلار = ضرر دلاری**")
                     elif last_usd > 105:
-                        st.success(f"🟢 **سود دلاری واقعی:** معادل دلاری {last_usd-100:+.1f}% رشد کرده. فروش توجیه دارد.")
+                        st.success(f"🟢 **سود دلاری واقعی:** {last_usd-100:+.1f}% رشد دلاری. فروش توجیه دارد.")
 
-            # ============ تاریخچه با ستون‌های جدید ============
+            # ============ تاریخچه با ۹ ستون ============
             if records and analytics:
                 st.markdown("**📋 تاریخچه رکوردها**")
-                hc = st.columns([2, 2, 2, 2, 2, 2, 1, 1])
+
+                hc = st.columns([2, 1.6, 1.6, 1.8, 1.8, 1.6, 1.6, 0.7, 0.7])
                 hc[0].caption("**تاریخ**")
                 hc[1].caption("**قیمت واحد**")
-                hc[2].caption("**معادل دلاری**")
-                hc[3].caption("**انس (دلار)**")
-                hc[4].caption("**نرخ دلار**")
-                hc[5].caption("**بازده دلاری**")
-                hc[6].caption("**✏️**")
-                hc[7].caption("**🗑️**")
+                hc[2].caption("**دلاری**")
+                hc[3].caption("**انس**")
+                hc[4].caption("**دلار**")
+                hc[5].caption("**واحد/انس**")
+                hc[6].caption("**بازده دلاری**")
+                hc[7].caption("**✏️**")
+                hc[8].caption("**🗑️**")
                 st.divider()
 
                 sorted_analytics = list(reversed(analytics))
@@ -1394,30 +1430,54 @@ elif selected == "gold":
                     ounce_ch = a["ounce_change_pct"]
                     usd_ch = a["usd_change_pct"]
 
-                    rc = st.columns([2, 2, 2, 2, 2, 2, 1, 1])
+                    units_for_ounce = 0
+                    if r.get("unit_price", 0) > 0 and r.get("usd_rate_used", 0) > 0:
+                        units_for_ounce = (r["ounce_price_usd"] * r["usd_rate_used"]) / r["unit_price"]
+
+                    rc = st.columns([2, 1.6, 1.6, 1.8, 1.8, 1.6, 1.6, 0.7, 0.7])
                     rc[0].markdown(f"📅 {r['date_jalali']}")
                     rc[1].markdown(f"{r['unit_price']:,.0f}")
                     rc[2].markdown(f"${usd_eq:,.4f}" if usd_eq else "—")
-                    ounce_text = f"${r['ounce_price_usd']:,.0f}"
-                    if ounce_ch is not None:
-                        color = "🟢" if ounce_ch > 0 else "🔴" if ounce_ch < 0 else "⚪"
-                        ounce_text += f" {color}{ounce_ch:+.1f}%"
-                    rc[3].markdown(ounce_text)
-                    usd_text = f"{r.get('usd_rate_used', 0):,.0f}"
-                    if usd_ch is not None:
-                        color = "🟢" if usd_ch > 0 else "🔴" if usd_ch < 0 else "⚪"
-                        usd_text += f" {color}{usd_ch:+.1f}%"
-                    rc[4].markdown(usd_text)
-                    if usd_ret is not None:
-                        color = "🟢" if usd_ret > 0 else "🔴" if usd_ret < 0 else "⚪"
-                        rc[5].markdown(f"**{color} {usd_ret:+.1f}%**")
+
+                    ounce_base = f"${r['ounce_price_usd']:,.0f}"
+                    if ounce_ch is not None and abs(ounce_ch) >= 0.05:
+                        color = "#10b981" if ounce_ch > 0 else "#ef4444"
+                        arrow = "↑" if ounce_ch > 0 else "↓"
+                        rc[3].markdown(
+                            f'{ounce_base} <span style="color:{color};font-size:0.85em;">{arrow}{abs(ounce_ch):.1f}%</span>',
+                            unsafe_allow_html=True)
                     else:
-                        rc[5].markdown("—")
-                    if rc[6].button("✏️", key=f"edit_btn_gold_{fund['id']}_{r['id']}"):
+                        rc[3].markdown(ounce_base)
+
+                    usd_base = f"{r.get('usd_rate_used', 0):,.0f}"
+                    if usd_ch is not None and abs(usd_ch) >= 0.05:
+                        color = "#10b981" if usd_ch > 0 else "#ef4444"
+                        arrow = "↑" if usd_ch > 0 else "↓"
+                        rc[4].markdown(
+                            f'{usd_base} <span style="color:{color};font-size:0.85em;">{arrow}{abs(usd_ch):.1f}%</span>',
+                            unsafe_allow_html=True)
+                    else:
+                        rc[4].markdown(usd_base)
+
+                    rc[5].markdown(f"**{units_for_ounce:,.0f}**" if units_for_ounce else "—")
+
+                    if usd_ret is not None and abs(usd_ret) >= 0.05:
+                        color = "#10b981" if usd_ret > 0 else "#ef4444"
+                        arrow = "↑" if usd_ret > 0 else "↓"
+                        rc[6].markdown(
+                            f'<span style="color:{color};font-weight:700;">{arrow}{abs(usd_ret):.1f}%</span>',
+                            unsafe_allow_html=True)
+                    else:
+                        rc[6].markdown("—")
+
+                    if rc[7].button("✏️", key=f"edit_btn_gold_{fund['id']}_{r['id']}"):
                         st.session_state[f"edit_open_gold_{r['id']}"] = not st.session_state.get(f"edit_open_gold_{r['id']}", False)
-                    if rc[7].button("🗑️", key=f"del_gold_rec_{fund['id']}_{r['id']}"):
+                    if rc[8].button("🗑️", key=f"del_gold_rec_{fund['id']}_{r['id']}"):
                         fund["records"] = [x for x in fund["records"] if x["id"] != r["id"]]
-                        st.session_state.data = data; save_all(data); st.rerun()
+                        st.session_state.data = data
+                        save_all(data)
+                        st.rerun()
+
                     if st.session_state.get(f"edit_open_gold_{r['id']}", False):
                         gvk = f"v_gold_rec_{r['id']}"
                         gfk = f"edit_gold_rec_{r['id']}_v{get_version(gvk)}"
@@ -1431,7 +1491,7 @@ elif selected == "gold":
                             er_note = ec5.text_input("توضیح", value=r.get("note", ""), key=f"g_ed_note_{r['id']}")
                             if er_price > 0 and er_ounce > 0 and er_rate > 0:
                                 new_u = (er_ounce * er_rate) / er_price
-                                st.info(f"📊 واحد جدید: **{new_u:,.2f}**")
+                                st.info(f"📊 واحد برای ۱ انس: **{new_u:,.0f}** واحد")
                             if st.form_submit_button("💾 ذخیره", use_container_width=True):
                                 jd = parse_jalali(er_date)
                                 if jd and er_price > 0 and er_ounce > 0 and er_rate > 0:
@@ -1446,8 +1506,11 @@ elif selected == "gold":
                                             break
                                     st.session_state.data = data
                                     st.session_state[f"edit_open_gold_{r['id']}"] = False
-                                    bump_version(gvk); save_all(data); st.rerun()
-                                else: st.error("مقادیر معتبر وارد کنید.")
+                                    bump_version(gvk)
+                                    save_all(data)
+                                    st.rerun()
+                                else:
+                                    st.error("مقادیر معتبر وارد کنید.")
                     st.divider()
 
             with st.expander(f"⚠️ حذف صندوق {fund['name']}"):
@@ -1455,7 +1518,9 @@ elif selected == "gold":
                 confirm = st.checkbox("مطمئنم", key=f"confirm_del_gold_{fund['id']}_{_fi}")
                 if st.button("🗑️ حذف صندوق", disabled=not confirm, key=f"del_gold_fund_{fund['id']}_{_fi}", use_container_width=True):
                     data["gold_funds"] = [x for x in data["gold_funds"] if x["id"] != fund["id"]]
-                    st.session_state.data = data; save_all(data); st.rerun()
+                    st.session_state.data = data
+                    save_all(data)
+                    st.rerun()
             st.divider()
 
 # ================== صفحه تنظیمات ==================
