@@ -1186,18 +1186,26 @@ elif selected == "gold":
     st.caption(f"📅 {today_jalali_str()}")
 
     # ✅ اندازه فونت تابلوها = ۳۲px
-    st.markdown("""
+        st.markdown("""
     <style>
-        [data-testid="stMainBlockContainer"] [data-testid="stMetricValue"] {
+        [data-testid="stMainBlockContainer"] [data-testid="stMetricValue"],
+        [data-testid="stMainBlockContainer"] [data-testid="stMetricValue"] *,
+        [data-testid="stMainBlockContainer"] [data-testid="stMetricValue"] p,
+        [data-testid="stMainBlockContainer"] [data-testid="stMetricValue"] div,
+        [data-testid="stMainBlockContainer"] [data-testid="stMetricValue"] span {
             font-size: 2rem !important;
             line-height: 1.2 !important;
             font-weight: 600 !important;
         }
-        [data-testid="stMainBlockContainer"] [data-testid="stMetricLabel"] {
+        [data-testid="stMainBlockContainer"] [data-testid="stMetricLabel"],
+        [data-testid="stMainBlockContainer"] [data-testid="stMetricLabel"] *,
+        [data-testid="stMainBlockContainer"] [data-testid="stMetricLabel"] p {
             font-size: 0.8rem !important;
             font-weight: 500 !important;
         }
-        [data-testid="stMainBlockContainer"] [data-testid="stMetricDelta"] {
+        [data-testid="stMainBlockContainer"] [data-testid="stMetricDelta"],
+        [data-testid="stMainBlockContainer"] [data-testid="stMetricDelta"] *,
+        [data-testid="stMainBlockContainer"] [data-testid="stMetricDelta"] p {
             font-size: 0.72rem !important;
         }
     </style>
