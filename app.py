@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import json
 import os
 import re
@@ -8,7 +9,7 @@ import requests
 import base64
 import gzip
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 import jdatetime
 
 from styles import FONTS, inject_login, inject_app
@@ -315,7 +316,7 @@ def verify_github_save(expected_data):
     except Exception as e:
         return False, str(e)[:50], None
 
-# ================== مهاجرت داده ==================
+# ================== مهاجرت ==================
 def migrate_data(data):
     if not isinstance(data, dict) or not data:
         return {"assets": [], "usd_rates": [], "gold_funds": [], "settings": {
@@ -527,6 +528,83 @@ def render_html_table(df, dark=False):
         html += '</tr>'
     html += '</tbody></table></div>'
     st.markdown(html, unsafe_allow_html=True)
+
+# ================== تحلیل صندوق طلا ==================
+def unit_usd_equivalent(record):
+    rate = record.get("usd_rate_used", 0)
+    if rate <= 0: return None
+    return record["unit_price"] / rate
+
+def gold_gram_per_unit(record):
+    """گرم طلا در هر واحد صندوق"""
+    if record.get("ounce_price_usd", 0) <= 0 or record.get("usd_rate_used", 0) <= 0 or record.get("unit_price", 0) <= 0:
+        return None
+    return (record["unit_price"] * 31.1035) / (record["ounce_price_usd"] * record["usd_rate_used"])
+
+def gold_fund_analytics(fund):
+    """محاسبه معادل دلاری، بازده، تغییرات برای هر رکورد"""
+    records = sorted(fund.get("records", []), key=lambda r: r.get("date_gregorian", ""))
+    if not records: return []
+    rows = []
+    first_usd = None
+    for i, r in enumerate(records):
+        usd_eq = unit_usd_equivalent(r)
+        if first_usd is None and usd_eq: first_usd = usd_eq
+        ounce_change = None; usd_change = None
+        if i > 0:
+            prev = records[i-1]
+            if prev.get("ounce_price_usd", 0) > 0:
+                ounce_change = (r["ounce_price_usd"] / prev["ounce_price_usd"] - 1) * 100
+            if prev.get("usd_rate_used", 0) > 0 and r.get("usd_rate_used", 0) > 0:
+                usd_change = (r["usd_rate_used"] / prev["usd_rate_used"] - 1) * 100
+        usd_return = None
+        if first_usd and usd_eq: usd_return = (usd_eq / first_usd - 1) * 100
+        gram = gold_gram_per_unit(r)
+        rows.append({"record": r, "usd_equivalent": usd_eq, "usd_return_pct": usd_return,
+                     "ounce_change_pct": ounce_change, "usd_change_pct": usd_change,
+                     "gram_per_unit": gram})
+    return rows
+
+def dollar_trap_analysis(fund, days=30):
+    """تحلیل تله دلار در N روز گذشته"""
+    records = sorted(fund.get("records", []), key=lambda r: r.get("date_gregorian", ""))
+    if len(records) < 2: return None
+    last = records[-1]
+    last_date_str = last.get("date_gregorian", "")[:10]
+    if not last_date_str: return None
+    try:
+        dt_last = datetime.fromisoformat(last_date_str + "T00:00:00")
+        cutoff = (dt_last - timedelta(days=days)).strftime("%Y-%m-%d")
+    except Exception: return None
+    older = None
+    for r in records:
+        if r.get("date_gregorian", "")[:10] >= cutoff:
+            older = r; break
+    if not older or older.get("id") == last.get("id"): return None
+    ounce_change = 0; usd_change = 0
+    if older.get("ounce_price_usd", 0) > 0:
+        ounce_change = (last["ounce_price_usd"] / older["ounce_price_usd"] - 1) * 100
+    if older.get("usd_rate_used", 0) > 0:
+        usd_change = (last["usd_rate_used"] / older["usd_rate_used"] - 1) * 100
+    return {"usd_change": usd_change, "ounce_change": ounce_change,
+            "gap": usd_change - ounce_change, "days": days,
+            "older_date": older.get("date_jalali"), "last_date": last.get("date_jalali")}
+
+def ounce_signal(fund):
+    """سیگنال بر اساس انس (نه پرمیوم)"""
+    records = sorted(fund.get("records", []), key=lambda r: r.get("date_gregorian", ""))
+    if len(records) < 3: return "⚪ داده کافی نیست"
+    last = records[-1]
+    ounces = [r.get("ounce_price_usd", 0) for r in records if r.get("ounce_price_usd", 0) > 0]
+    if not ounces: return "⚪ داده انس کافی نیست"
+    avg = sum(ounces) / len(ounces)
+    current = last.get("ounce_price_usd", 0)
+    if current <= 0 or avg <= 0: return "⚪ داده معتبر نیست"
+    diff = (current / avg - 1) * 100
+    if diff > 5: return f"🔴 انس {diff:+.1f}% بالای میانگین — فروش"
+    elif diff > 0: return f"🟡 انس {diff:+.1f}% بالای میانگین — کمی فروش"
+    elif diff > -5: return f"🟢 انس {diff:+.1f}% زیر میانگین — کمی خرید"
+    else: return f"🟢🟢 انس {diff:+.1f}% زیر میانگین — خرید قوی"
 
 # ================== گرید آیکون ==================
 def _icon_grid_picker(prefix, current, on_save):
@@ -895,9 +973,7 @@ def render_settings_page(data):
         st.subheader("💾 وضعیت")
         local_ok = os.path.exists(DATA_FILE)
         if local_ok:
-            _sz = os.path.getsize(DATA_FILE)
-            _sz_kb = _sz / 1024
-            _est_gz = _sz_kb * 0.1
+            _sz = os.path.getsize(DATA_FILE); _sz_kb = _sz / 1024; _est_gz = _sz_kb * 0.1
             if _sz_kb > 10240: st.error(f"⚠️ فایل {_sz_kb:,.0f} KB — بسیار بزرگ! GitHub gz: ~{_est_gz:,.0f} KB")
             elif _sz_kb > 5120: st.warning(f"⚠️ فایل {_sz_kb:,.0f} KB — بزرگ. GitHub gz: ~{_est_gz:,.0f} KB")
             else: st.info(f"📦 فایل محلی: **{_sz_kb:,.1f} KB** — GitHub gz تخمینی: **~{_est_gz:,.1f} KB**")
@@ -1108,6 +1184,7 @@ elif selected == "usd":
 elif selected == "gold":
     st.header("🥇 صندوق‌های طلا")
     st.caption(f"📅 {today_jalali_str()}")
+
     _sync_u, _sync_m = sync_usd_rates_to_gold_funds(data)
     if _sync_u > 0: st.session_state.data = data
     if _sync_m > 0: st.warning(f"⚠️ {_sync_m} رکورد تاریخشان قبل از اولین نرخ دلار ثبت شده است.")
@@ -1135,6 +1212,21 @@ elif selected == "gold":
         for fund in gold_funds:
             st.markdown(f"### {fund.get('icon', '🥇')} {fund['name']}")
             records = fund.get("records", [])
+
+            # ============ هشدار تله دلار ============
+            _trap = dollar_trap_analysis(fund, days=30)
+            if _trap and _trap["gap"] > 10:
+                st.warning(f"""
+⚠️ **هشدار تله دلار** — در {_trap['days']} روز گذشته ({_trap['older_date']} تا {_trap['last_date']}):
+- نرخ دلار: **{_trap['usd_change']:+.1f}%**
+- انس طلا: **{_trap['ounce_change']:+.1f}%**
+- **شکاف: {_trap['gap']:+.1f}%**
+
+🔴 **اگر الان صندوق را بفروشی و دلار نخری، سود دلاری‌ات از بین می‌رود.** برای فروش، **حتماً همزمان دلار بخر**.
+""")
+
+            # ============ متریک‌ها ============
+            analytics = gold_fund_analytics(fund)
             prices = [r["unit_price"] for r in records if r.get("unit_price", 0) > 0]
             units_list = []
             for r in records:
@@ -1155,8 +1247,66 @@ elif selected == "gold":
                     u3.metric("📈 بیشترین واحد", f"{max(units_list):,.2f}")
                     avg_price = sum(prices) / len(prices); avg_units = sum(units_list) / len(units_list)
                     u4.metric("📊 میانگین ارزش", f"{avg_units * avg_price:,.0f} ریال", help="میانگین واحد × میانگین قیمت")
-            else: st.caption("هنوز رکوردی ثبت نشده.")
+                if analytics and analytics[-1]["usd_equivalent"] is not None:
+                    st.markdown("**💵 تحلیل دلاری**")
+                    a1, a2, a3, a4 = st.columns(4)
+                    last_a = analytics[-1]
+                    first_usd = analytics[0]["usd_equivalent"]
+                    a1.metric("💵 معادل دلاری فعلی", f"${last_a['usd_equivalent']:,.4f}")
+                    if last_a["usd_return_pct"] is not None:
+                        a2.metric("📈 بازده دلاری از خرید", f"{last_a['usd_return_pct']:+.1f}%",
+                                  delta=f"${last_a['usd_equivalent'] - first_usd:+.4f}" if first_usd else None)
+                    if last_a["gram_per_unit"]:
+                        avg_gram = sum([r["gram_per_unit"] for r in analytics if r["gram_per_unit"]]) / len([r for r in analytics if r["gram_per_unit"]])
+                        premium_pct = (last_a["gram_per_unit"] / avg_gram - 1) * 100 if avg_gram else 0
+                        a3.metric("⚖️ گرم/واحد", f"{last_a['gram_per_unit']*1000:.3f} mg",
+                                  delta=f"{premium_pct:+.1f}% vs avg")
+                    a4.metric("📊 سیگنال انس", ounce_signal(fund).split("—")[0].strip())
+                    st.caption(f"**سیگنال فعلی:** {ounce_signal(fund)}")
+            else:
+                st.caption("هنوز رکوردی ثبت نشده.")
 
+            # ============ ماشین‌حساب آربیتراژ ============
+            if len(records) >= 1:
+                with st.expander("🧮 ماشین‌حساب آربیتراژ دلاری (فروش صندوق → خرید دلار → خرید مجدد)"):
+                    if usd_rate_current is None:
+                        st.warning("ابتدا نرخ دلار را در صفحه «💵 دلار» ثبت کنید.")
+                    else:
+                        st.caption(f"نرخ دلار فعلی: **{usd_rate_current:,.0f} ریال**")
+                        calc_c1, calc_c2, calc_c3, calc_c4 = st.columns(4)
+                        calc_units = calc_c1.number_input("تعداد واحد برای فروش", min_value=0.0, value=1.0, step=1.0, key=f"calc_units_{fund['id']}")
+                        calc_sell = calc_c2.number_input("قیمت فروش (ریال)", min_value=0.0,
+                                                          value=float(records[-1]["unit_price"]), step=1000.0, key=f"calc_sell_{fund['id']}")
+                        calc_rebuy_rate = calc_c3.number_input("نرخ دلار پیش‌بینی برای خرید مجدد", min_value=0.0,
+                                                                value=float(usd_rate_current), step=1000.0, key=f"calc_rebuy_rate_{fund['id']}")
+                        calc_rebuy = calc_c4.number_input("قیمت خرید مجدد (ریال)", min_value=0.0,
+                                                           value=float(records[-1]["unit_price"]), step=1000.0, key=f"calc_rebuy_{fund['id']}")
+                        st.markdown("**کارمزدها** (برای محاسبه دقیق‌تر)")
+                        fee_c1, fee_c2, fee_c3 = st.columns(3)
+                        fee_sell_pct = fee_c1.number_input("کارمزد فروش صندوق (%)", min_value=0.0, value=0.5, step=0.1, key=f"fee_sell_{fund['id']}")
+                        fee_usd_pct = fee_c2.number_input("اسپرد دلار (٪ هر طرف)", min_value=0.0, value=1.0, step=0.1, key=f"fee_usd_{fund['id']}")
+                        fee_buy_pct = fee_c3.number_input("کارمزد خرید صندوق (%)", min_value=0.0, value=0.5, step=0.1, key=f"fee_buy_{fund['id']}")
+                        if calc_units > 0 and calc_sell > 0 and calc_rebuy_rate > 0 and calc_rebuy > 0:
+                            gross_irr = calc_units * calc_sell * (1 - fee_sell_pct / 100)
+                            dollars = gross_irr / (calc_rebuy_rate * (1 + fee_usd_pct / 100))
+                            irr_back = dollars * calc_rebuy_rate * (1 - fee_usd_pct / 100)
+                            new_units = (irr_back / calc_rebuy) * (1 - fee_buy_pct / 100)
+                            net_units = new_units - calc_units
+                            net_irr = (new_units - calc_units) * calc_rebuy
+                            st.divider()
+                            r1, r2, r3 = st.columns(3)
+                            r1.metric("💵 دلار به‌دست‌آمده", f"${dollars:,.4f}")
+                            r2.metric("📦 واحد پس از خرید مجدد", f"{new_units:,.4f}")
+                            if net_units > 0:
+                                r3.metric("✅ سود خالص", f"+{net_units:,.4f} واحد", delta=f"{net_irr:+,.0f} ریال")
+                                st.success(f"✅ این آربیتراژ **سودآور** است: **{net_units:,.4f} واحد** بیشتر (معادل {net_irr:,.0f} ریال)")
+                            else:
+                                r3.metric("❌ ضرر خالص", f"{net_units:,.4f} واحد", delta=f"{net_irr:+,.0f} ریال")
+                                st.error(f"❌ این آربیتراژ **ضرر** دارد: {abs(net_units):,.4f} واحد از دست می‌رود")
+                            if net_units > 0 and net_units < calc_units * 0.05:
+                                st.info("💡 سود کمتر از ۵٪ — با کارمزد و اسپرد واقعی، ارزش ریسک ندارد.")
+
+            # ============ افزودن رکورد ============
             with st.expander(f"➕ افزودن رکورد برای {fund['name']}", expanded=(len(records) == 0)):
                 if usd_rate_current is None: st.warning("⚠️ ابتدا نرخ دلار را در صفحه «💵 دلار» ثبت کنید.")
                 else:
@@ -1168,7 +1318,8 @@ elif selected == "gold":
                     g_note = st.text_input("توضیح (اختیاری)", key=f"gnote_{fund['id']}")
                     if g_price > 0 and g_ounce > 0:
                         units_needed = (g_ounce * usd_rate_current) / g_price
-                        st.success(f"📊 **تعداد واحد مورد نیاز:** {units_needed:,.2f} واحد")
+                        usd_equiv = g_price / usd_rate_current if usd_rate_current > 0 else 0
+                        st.success(f"📊 **واحد مورد نیاز:** {units_needed:,.2f} واحد | **معادل دلاری:** ${usd_equiv:.4f}")
                     if st.button("💾 ثبت رکورد", key=f"gsave_{fund['id']}", use_container_width=True):
                         jd = parse_jalali(g_date)
                         if jd is None: st.error("تاریخ نامعتبر.")
@@ -1185,29 +1336,86 @@ elif selected == "gold":
                                 st.session_state.pop(k, None)
                             st.rerun()
 
-            if records:
-                sorted_recs = sorted(records, key=lambda r: r.get("date_gregorian", ""), reverse=True)
+            # ============ نمودار سه‌خطی نرمال‌شده ============
+            if len(records) >= 2 and analytics:
+                st.markdown("**📈 نمودار مقایسه‌ای (نرمال‌شده به ۱۰۰)**")
+                st.caption("خط آبی بالا + خط سبز پایین = تله دلار | خط نارنجی = روند انس جهانی")
+                valid = [a for a in analytics if a["usd_equivalent"] is not None and a["record"].get("ounce_price_usd", 0) > 0]
+                if len(valid) >= 2:
+                    base_irr = valid[0]["record"]["unit_price"]
+                    base_usd = valid[0]["usd_equivalent"]
+                    base_ounce = valid[0]["record"]["ounce_price_usd"]
+                    dates = [a["record"]["date_jalali"] for a in valid]
+                    irr_index = [(a["record"]["unit_price"] / base_irr) * 100 for a in valid]
+                    usd_index = [(a["usd_equivalent"] / base_usd) * 100 for a in valid]
+                    ounce_index = [(a["record"]["ounce_price_usd"] / base_ounce) * 100 for a in valid]
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(x=dates, y=irr_index, mode="lines+markers", name="قیمت ریالی",
+                                             line=dict(color="#3b82f6", width=3), marker=dict(size=7)))
+                    fig.add_trace(go.Scatter(x=dates, y=usd_index, mode="lines+markers", name="معادل دلاری",
+                                             line=dict(color="#10b981", width=3), marker=dict(size=7)))
+                    fig.add_trace(go.Scatter(x=dates, y=ounce_index, mode="lines+markers", name="انس طلا",
+                                             line=dict(color="#f59e0b", width=2, dash="dot"), marker=dict(size=6)))
+                    fig.update_layout(
+                        font=dict(family="Vazirmatn, Tahoma", size=13, color="#e6edf3" if _dark else "#1f2937"),
+                        yaxis=dict(title="شاخص (پایه=۱۰۰)", tickformat=".0f"),
+                        xaxis=dict(title="تاریخ"), margin=dict(t=30, b=20),
+                        hovermode="x unified",
+                        paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
+                        plot_bgcolor="rgba(0,0,0,0)" if _dark else "white",
+                        legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5))
+                    st.plotly_chart(fig, use_container_width=True)
+                    # تفسیر خودکار
+                    last_irr = irr_index[-1]; last_usd = usd_index[-1]
+                    if last_irr > 105 and last_usd < 95:
+                        st.error(f"🔴 **تله دلار:** قیمت ریالی {last_irr-100:+.1f}% رشد کرده ولی معادل دلاری {last_usd-100:+.1f}% افت کرده. **فروش بدون خرید دلار = ضرر دلاری**")
+                    elif last_usd > 105:
+                        st.success(f"🟢 **سود دلاری واقعی:** معادل دلاری {last_usd-100:+.1f}% رشد کرده. فروش توجیه دارد.")
+
+            # ============ تاریخچه با ستون‌های جدید ============
+            if records and analytics:
                 st.markdown("**📋 تاریخچه رکوردها**")
-                hc = st.columns([2, 2, 2, 2, 2, 3, 1, 1])
-                hc[0].caption("**تاریخ**"); hc[1].caption("**قیمت واحد**")
-                hc[2].caption("**انس (دلار)**"); hc[3].caption("**نرخ دلار**")
-                hc[4].caption("**واحد**"); hc[5].caption("**توضیح**")
-                hc[6].caption("**✏️**"); hc[7].caption("**🗑️**")
+                hc = st.columns([2, 2, 2, 2, 2, 2, 1, 1])
+                hc[0].caption("**تاریخ**")
+                hc[1].caption("**قیمت واحد**")
+                hc[2].caption("**معادل دلاری**")
+                hc[3].caption("**انس (دلار)**")
+                hc[4].caption("**نرخ دلار**")
+                hc[5].caption("**بازده دلاری**")
+                hc[6].caption("**✏️**")
+                hc[7].caption("**🗑️**")
                 st.divider()
-                for r in sorted_recs:
-                    units = 0
-                    if r.get("unit_price", 0) > 0 and r.get("usd_rate_used", 0) > 0:
-                        units = (r["ounce_price_usd"] * r["usd_rate_used"]) / r["unit_price"]
-                    rc = st.columns([2, 2, 2, 2, 2, 3, 1, 1])
+
+                sorted_analytics = list(reversed(analytics))
+                for a in sorted_analytics:
+                    r = a["record"]
+                    usd_eq = a["usd_equivalent"]
+                    usd_ret = a["usd_return_pct"]
+                    ounce_ch = a["ounce_change_pct"]
+                    usd_ch = a["usd_change_pct"]
+
+                    rc = st.columns([2, 2, 2, 2, 2, 2, 1, 1])
                     rc[0].markdown(f"📅 {r['date_jalali']}")
                     rc[1].markdown(f"{r['unit_price']:,.0f}")
-                    rc[2].markdown(f"${r['ounce_price_usd']:,.2f}")
-                    rc[3].markdown(f"{r.get('usd_rate_used', 0):,.0f}")
-                    rc[4].markdown(f"**{units:,.2f}**")
-                    rc[5].caption(r.get("note", "") or "—")
-                    if rc[6].button("✏️", key=f"edit_btn_gold_{fund['id']}_{r['id']}", help="ویرایش"):
+                    rc[2].markdown(f"${usd_eq:,.4f}" if usd_eq else "—")
+                    ounce_text = f"${r['ounce_price_usd']:,.0f}"
+                    if ounce_ch is not None:
+                        color = "🟢" if ounce_ch > 0 else "🔴" if ounce_ch < 0 else "⚪"
+                        ounce_text += f" {color}{ounce_ch:+.1f}%"
+                    rc[3].markdown(ounce_text)
+                    usd_text = f"{r.get('usd_rate_used', 0):,.0f}"
+                    if usd_ch is not None:
+                        color = "🟢" if usd_ch > 0 else "🔴" if usd_ch < 0 else "⚪"
+                        usd_text += f" {color}{usd_ch:+.1f}%"
+                    rc[4].markdown(usd_text)
+                    if usd_ret is not None:
+                        color = "🟢" if usd_ret > 0 else "🔴" if usd_ret < 0 else "⚪"
+                        rc[5].markdown(f"**{color} {usd_ret:+.1f}%**")
+                    else:
+                        rc[5].markdown("—")
+                    if rc[6].button("✏️", key=f"edit_btn_gold_{fund['id']}_{r['id']}"):
                         st.session_state[f"edit_open_gold_{r['id']}"] = not st.session_state.get(f"edit_open_gold_{r['id']}", False)
-                    if rc[7].button("🗑️", key=f"del_gold_rec_{fund['id']}_{r['id']}", help="حذف"):
+                    if rc[7].button("🗑️", key=f"del_gold_rec_{fund['id']}_{r['id']}"):
                         fund["records"] = [x for x in fund["records"] if x["id"] != r["id"]]
                         st.session_state.data = data; save_all(data); st.rerun()
                     if st.session_state.get(f"edit_open_gold_{r['id']}", False):
@@ -1222,7 +1430,8 @@ elif selected == "gold":
                             er_rate = ec4.number_input("نرخ دلار", value=float(r.get("usd_rate_used", 0)), min_value=0.0, format="%.0f", step=1000.0, key=f"g_ed_rate_{r['id']}")
                             er_note = ec5.text_input("توضیح", value=r.get("note", ""), key=f"g_ed_note_{r['id']}")
                             if er_price > 0 and er_ounce > 0 and er_rate > 0:
-                                st.info(f"📊 واحد جدید: **{(er_ounce * er_rate) / er_price:,.2f}**")
+                                new_u = (er_ounce * er_rate) / er_price
+                                st.info(f"📊 واحد جدید: **{new_u:,.2f}**")
                             if st.form_submit_button("💾 ذخیره", use_container_width=True):
                                 jd = parse_jalali(er_date)
                                 if jd and er_price > 0 and er_ounce > 0 and er_rate > 0:
