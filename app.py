@@ -1185,8 +1185,7 @@ elif selected == "gold":
     st.header("🥇 صندوق‌های طلا")
     st.caption(f"📅 {today_jalali_str()}")
 
-    # ✅ اندازه فونت تابلوها = ۳۲px
-        st.markdown('<style>[data-testid="stMainBlockContainer"] [data-testid="stMetricValue"],[data-testid="stMainBlockContainer"] [data-testid="stMetricValue"] *,[data-testid="stMainBlockContainer"] [data-testid="stMetricValue"] p,[data-testid="stMainBlockContainer"] [data-testid="stMetricValue"] div,[data-testid="stMainBlockContainer"] [data-testid="stMetricValue"] span{font-size:2rem!important;line-height:1.2!important;font-weight:600!important;}[data-testid="stMainBlockContainer"] [data-testid="stMetricLabel"],[data-testid="stMainBlockContainer"] [data-testid="stMetricLabel"] *,[data-testid="stMainBlockContainer"] [data-testid="stMetricLabel"] p{font-size:0.8rem!important;font-weight:500!important;}[data-testid="stMainBlockContainer"] [data-testid="stMetricDelta"],[data-testid="stMainBlockContainer"] [data-testid="stMetricDelta"] *,[data-testid="stMainBlockContainer"] [data-testid="stMetricDelta"] p{font-size:0.72rem!important;}</style>', unsafe_allow_html=True)
+    st.markdown('<style>[data-testid="stMainBlockContainer"] [data-testid="stMetricValue"],[data-testid="stMainBlockContainer"] [data-testid="stMetricValue"] *,[data-testid="stMainBlockContainer"] [data-testid="stMetricValue"] p{font-size:2rem!important;line-height:1.2!important;font-weight:600!important;}[data-testid="stMainBlockContainer"] [data-testid="stMetricLabel"],[data-testid="stMainBlockContainer"] [data-testid="stMetricLabel"] *,[data-testid="stMainBlockContainer"] [data-testid="stMetricLabel"] p{font-size:0.8rem!important;font-weight:500!important;}[data-testid="stMainBlockContainer"] [data-testid="stMetricDelta"],[data-testid="stMainBlockContainer"] [data-testid="stMetricDelta"] *,[data-testid="stMainBlockContainer"] [data-testid="stMetricDelta"] p{font-size:0.72rem!important;}</style>', unsafe_allow_html=True)
 
     _sync_u, _sync_m = sync_usd_rates_to_gold_funds(data)
     if _sync_u > 0:
@@ -1223,19 +1222,10 @@ elif selected == "gold":
             st.markdown(f"### {fund.get('icon', '🥇')} {fund['name']}")
             records = fund.get("records", [])
 
-            # ============ هشدار تله دلار ============
             _trap = dollar_trap_analysis(fund, days=30)
             if _trap and _trap["gap"] > 10:
-                st.warning(f"""
-⚠️ **هشدار تله دلار** — در {_trap['days']} روز گذشته ({_trap['older_date']} تا {_trap['last_date']}):
-- نرخ دلار: **{_trap['usd_change']:+.1f}%**
-- انس طلا: **{_trap['ounce_change']:+.1f}%**
-- **شکاف: {_trap['gap']:+.1f}%**
+                st.warning(f"⚠️ **هشدار تله دلار** — در {_trap['days']} روز گذشته ({_trap['older_date']} تا {_trap['last_date']}): نرخ دلار **{_trap['usd_change']:+.1f}%**، انس طلا **{_trap['ounce_change']:+.1f}%**، شکاف **{_trap['gap']:+.1f}%**. 🔴 اگر الان صندوق را بفروشی و دلار نخری، سود دلاری‌ات از بین می‌رود.")
 
-🔴 **اگر الان صندوق را بفروشی و دلار نخری، سود دلاری‌ات از بین می‌رود.** برای فروش، **حتماً همزمان دلار بخر**.
-""")
-
-            # ============ متریک‌ها ============
             analytics = gold_fund_analytics(fund)
             prices = [r["unit_price"] for r in records if r.get("unit_price", 0) > 0]
             units_list = []
@@ -1280,27 +1270,21 @@ elif selected == "gold":
             else:
                 st.caption("هنوز رکوردی ثبت نشده.")
 
-            # ============ ماشین‌حساب آربیتراژ ============
             if len(records) >= 1:
-                with st.expander("🧮 ماشین‌حساب آربیتراژ دلاری (فروش صندوق → خرید دلار → خرید مجدد)"):
+                with st.expander("🧮 ماشین‌حساب آربیتراژ دلاری"):
                     if usd_rate_current is None:
                         st.warning("ابتدا نرخ دلار را در صفحه «💵 دلار» ثبت کنید.")
                     else:
                         st.caption(f"نرخ دلار فعلی: **{usd_rate_current:,.0f} ریال**")
                         calc_c1, calc_c2, calc_c3, calc_c4 = st.columns(4)
-                        calc_units = calc_c1.number_input("تعداد واحد برای فروش", min_value=0.0, value=1.0, step=1.0, key=f"calc_units_{fund['id']}")
-                        calc_sell = calc_c2.number_input("قیمت فروش (ریال)", min_value=0.0,
-                                                          value=float(records[-1]["unit_price"]), step=1000.0, key=f"calc_sell_{fund['id']}")
-                        calc_rebuy_rate = calc_c3.number_input("نرخ دلار پیش‌بینی برای خرید مجدد", min_value=0.0,
-                                                                value=float(usd_rate_current), step=1000.0, key=f"calc_rebuy_rate_{fund['id']}")
-                        calc_rebuy = calc_c4.number_input("قیمت خرید مجدد (ریال)", min_value=0.0,
-                                                           value=float(records[-1]["unit_price"]), step=1000.0, key=f"calc_rebuy_{fund['id']}")
-                        st.markdown("**کارمزدها**")
+                        calc_units = calc_c1.number_input("تعداد واحد", min_value=0.0, value=1.0, step=1.0, key=f"calc_units_{fund['id']}")
+                        calc_sell = calc_c2.number_input("قیمت فروش (ریال)", min_value=0.0, value=float(records[-1]["unit_price"]), step=1000.0, key=f"calc_sell_{fund['id']}")
+                        calc_rebuy_rate = calc_c3.number_input("نرخ دلار پیش‌بینی", min_value=0.0, value=float(usd_rate_current), step=1000.0, key=f"calc_rebuy_rate_{fund['id']}")
+                        calc_rebuy = calc_c4.number_input("قیمت خرید مجدد (ریال)", min_value=0.0, value=float(records[-1]["unit_price"]), step=1000.0, key=f"calc_rebuy_{fund['id']}")
                         fee_c1, fee_c2, fee_c3 = st.columns(3)
                         fee_sell_pct = fee_c1.number_input("کارمزد فروش صندوق (%)", min_value=0.0, value=0.5, step=0.1, key=f"fee_sell_{fund['id']}")
                         fee_usd_pct = fee_c2.number_input("اسپرد دلار (% هر طرف)", min_value=0.0, value=1.0, step=0.1, key=f"fee_usd_{fund['id']}")
                         fee_buy_pct = fee_c3.number_input("کارمزد خرید صندوق (%)", min_value=0.0, value=0.5, step=0.1, key=f"fee_buy_{fund['id']}")
-
                         if calc_units > 0 and calc_sell > 0 and calc_rebuy_rate > 0 and calc_rebuy > 0:
                             gross_irr = calc_units * calc_sell * (1 - fee_sell_pct / 100)
                             dollars = gross_irr / (calc_rebuy_rate * (1 + fee_usd_pct / 100))
@@ -1314,14 +1298,13 @@ elif selected == "gold":
                             r2.metric("📦 واحد پس از خرید مجدد", f"{new_units:,.4f}")
                             if net_units > 0:
                                 r3.metric("✅ سود خالص", f"+{net_units:,.4f} واحد", delta=f"{net_irr:+,.0f} ریال")
-                                st.success(f"✅ سودآور: **{net_units:,.4f} واحد** بیشتر (معادل {net_irr:,.0f} ریال)")
+                                st.success(f"✅ سودآور: **{net_units:,.4f} واحد** بیشتر")
                             else:
                                 r3.metric("❌ ضرر خالص", f"{net_units:,.4f} واحد", delta=f"{net_irr:+,.0f} ریال")
-                                st.error(f"❌ ضرر: {abs(net_units):,.4f} واحد از دست می‌رود")
+                                st.error(f"❌ ضرر: {abs(net_units):,.4f} واحد")
                             if 0 < net_units < calc_units * 0.05:
-                                st.info("💡 سود کمتر از ۵٪ — با کارمزد واقعی، ارزش ریسک ندارد.")
+                                st.info("💡 سود کمتر از ۵٪ — ارزش ریسک ندارد.")
 
-            # ============ افزودن رکورد ============
             with st.expander(f"➕ افزودن رکورد برای {fund['name']}", expanded=(len(records) == 0)):
                 if usd_rate_current is None:
                     st.warning("⚠️ ابتدا نرخ دلار را در صفحه «💵 دلار» ثبت کنید.")
@@ -1355,10 +1338,8 @@ elif selected == "gold":
                                 st.session_state.pop(k, None)
                             st.rerun()
 
-            # ============ نمودار سه‌خطی نرمال‌شده ============
             if len(records) >= 2 and analytics:
                 st.markdown("**📈 نمودار مقایسه‌ای (نرمال‌شده به ۱۰۰)**")
-                st.caption("آبی بالا + سبز پایین = تله دلار | نارنجی نقطه‌چین = روند انس جهانی")
                 valid = [a for a in analytics if a["usd_equivalent"] is not None and a["record"].get("ounce_price_usd", 0) > 0]
                 if len(valid) >= 2:
                     base_irr = valid[0]["record"]["unit_price"]
@@ -1387,14 +1368,12 @@ elif selected == "gold":
                     last_irr = irr_index[-1]
                     last_usd = usd_index[-1]
                     if last_irr > 105 and last_usd < 95:
-                        st.error(f"🔴 **تله دلار:** ریالی {last_irr-100:+.1f}% ولی دلاری {last_usd-100:+.1f}%. **فروش بدون خرید دلار = ضرر دلاری**")
+                        st.error(f"🔴 **تله دلار:** ریالی {last_irr-100:+.1f}% ولی دلاری {last_usd-100:+.1f}%")
                     elif last_usd > 105:
-                        st.success(f"🟢 **سود دلاری واقعی:** {last_usd-100:+.1f}% رشد دلاری. فروش توجیه دارد.")
+                        st.success(f"🟢 **سود دلاری واقعی:** {last_usd-100:+.1f}%")
 
-            # ============ تاریخچه با ۹ ستون ============
             if records and analytics:
                 st.markdown("**📋 تاریخچه رکوردها**")
-
                 hc = st.columns([2, 1.6, 1.6, 1.8, 1.8, 1.6, 1.6, 0.7, 0.7])
                 hc[0].caption("**تاریخ**")
                 hc[1].caption("**قیمت واحد**")
@@ -1407,8 +1386,7 @@ elif selected == "gold":
                 hc[8].caption("**🗑️**")
                 st.divider()
 
-                sorted_analytics = list(reversed(analytics))
-                for a in sorted_analytics:
+                for a in list(reversed(analytics)):
                     r = a["record"]
                     usd_eq = a["usd_equivalent"]
                     usd_ret = a["usd_return_pct"]
@@ -1428,9 +1406,7 @@ elif selected == "gold":
                     if ounce_ch is not None and abs(ounce_ch) >= 0.05:
                         color = "#10b981" if ounce_ch > 0 else "#ef4444"
                         arrow = "↑" if ounce_ch > 0 else "↓"
-                        rc[3].markdown(
-                            f'{ounce_base} <span style="color:{color};font-size:0.85em;">{arrow}{abs(ounce_ch):.1f}%</span>',
-                            unsafe_allow_html=True)
+                        rc[3].markdown(f'{ounce_base} <span style="color:{color};font-size:0.85em;">{arrow}{abs(ounce_ch):.1f}%</span>', unsafe_allow_html=True)
                     else:
                         rc[3].markdown(ounce_base)
 
@@ -1438,9 +1414,7 @@ elif selected == "gold":
                     if usd_ch is not None and abs(usd_ch) >= 0.05:
                         color = "#10b981" if usd_ch > 0 else "#ef4444"
                         arrow = "↑" if usd_ch > 0 else "↓"
-                        rc[4].markdown(
-                            f'{usd_base} <span style="color:{color};font-size:0.85em;">{arrow}{abs(usd_ch):.1f}%</span>',
-                            unsafe_allow_html=True)
+                        rc[4].markdown(f'{usd_base} <span style="color:{color};font-size:0.85em;">{arrow}{abs(usd_ch):.1f}%</span>', unsafe_allow_html=True)
                     else:
                         rc[4].markdown(usd_base)
 
@@ -1449,9 +1423,7 @@ elif selected == "gold":
                     if usd_ret is not None and abs(usd_ret) >= 0.05:
                         color = "#10b981" if usd_ret > 0 else "#ef4444"
                         arrow = "↑" if usd_ret > 0 else "↓"
-                        rc[6].markdown(
-                            f'<span style="color:{color};font-weight:700;">{arrow}{abs(usd_ret):.1f}%</span>',
-                            unsafe_allow_html=True)
+                        rc[6].markdown(f'<span style="color:{color};font-weight:700;">{arrow}{abs(usd_ret):.1f}%</span>', unsafe_allow_html=True)
                     else:
                         rc[6].markdown("—")
 
@@ -1507,7 +1479,6 @@ elif selected == "gold":
                     save_all(data)
                     st.rerun()
             st.divider()
-
 # ================== صفحه تنظیمات ==================
 elif selected == "settings":
     render_settings_page(data)
