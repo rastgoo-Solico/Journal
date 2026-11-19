@@ -1487,12 +1487,14 @@ elif selected == "settings":
 elif selected.startswith("asset_"):
     aid = selected.replace("asset_", "")
     asset = next((a for a in assets if a["id"] == aid), None)
-    if asset is None: st.error("یافت نشد.")
+    if asset is None:
+        st.error("یافت نشد.")
     else:
         rate, _ = get_current_usd_rate(data)
         value, usd_val, rec = compute_asset_value(asset, rate)
         st.markdown(f'<h1 style="text-align:right;"><i class="fa-solid {asset_icon(asset)}" style="color:{asset_color(asset)};"></i> {asset["name"]}</h1>', unsafe_allow_html=True)
         st.caption(f"ارز: **{currency_label(asset['currency'])}** | ایجاد: {asset.get('created_at_jalali', '—')}")
+
         avk = f"v_asset_{asset['id']}"
         afk = f"edit_asset_{asset['id']}_v{get_version(avk)}"
         with st.expander("⚙️ ویرایش نام و ارز"):
@@ -1506,13 +1508,19 @@ elif selected.startswith("asset_"):
                         for i, a in enumerate(data["assets"]):
                             if a["id"] == asset["id"]:
                                 data["assets"][i]["name"] = new_name.strip()
-                                data["assets"][i]["currency"] = new_cur; break
-                        st.session_state.data = data; bump_version(avk); save_all(data); st.rerun()
+                                data["assets"][i]["currency"] = new_cur
+                                break
+                        st.session_state.data = data
+                        bump_version(avk)
+                        save_all(data)
+                        st.rerun()
+
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("📦 تعداد", fmt_num(rec["quantity"]) if rec else "—")
         c2.metric("💲 قیمت", f"{fmt_num(rec['unit_price'])} {currency_label(asset['currency'])}" if rec else "—")
         c3.metric("💰 ارزش", f"{fmt_num(value)} {currency_label(asset['currency'])}" if rec else "—")
         c4.metric("💵 دلاری", f"${usd_val:,.2f}" if usd_val is not None else "—")
+
         with st.container(border=True):
             st.subheader("➕ ثبت رکورد روزانه")
             with st.form(f"add_record_{asset['id']}", clear_on_submit=True):
@@ -1529,11 +1537,17 @@ elif selected.startswith("asset_"):
                             "id": _short_id(), "date_gregorian": giso,
                             "date_jalali": jd.strftime("%Y/%m/%d"),
                             "quantity": qty, "unit_price": price, "note": note.strip()})
-                        st.session_state.data = data; save_all(data); st.rerun()
-                    else: st.error("مقادیر معتبر وارد کنید.")
+                        st.session_state.data = data
+                        save_all(data)
+                        st.rerun()
+                    else:
+                        st.error("مقادیر معتبر وارد کنید.")
+
         records = sorted(asset.get("records", []), key=lambda r: r.get("date_gregorian", ""))
+
+        # ============ نمودار روند ساده (موجود) ============
         if len(records) >= 2:
-            st.subheader("📈 روند")
+            st.subheader("📈 روند ارزش")
             chart_rows = [{"تاریخ": r["date_jalali"], "ارزش": r["quantity"] * r["unit_price"]} for r in records]
             cdf = pd.DataFrame(chart_rows)
             fig = px.line(cdf, x="تاریخ", y="ارزش", markers=True,
@@ -1543,6 +1557,67 @@ elif selected.startswith("asset_"):
                              paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
                              plot_bgcolor="rgba(0,0,0,0)" if _dark else "white")
             st.plotly_chart(fig, use_container_width=True)
+
+        # ============ 🆕 نمودار مقایسه‌ای نرمال‌شده به ۱۰۰ ============
+        if len(records) >= 2:
+            usd_rates_sorted = sorted(data.get("usd_rates", []), key=lambda x: x.get("created_at", ""))
+            comp_rows = []
+            for r in records:
+                rec_date = r.get("date_gregorian", "")[:10]
+                rate_at = None
+                for ur in usd_rates_sorted:
+                    if ur.get("created_at", "")[:10] <= rec_date:
+                        rate_at = ur["rate"]
+                    else:
+                        break
+                val_native = r["quantity"] * r["unit_price"]
+                if asset["currency"] == "IRR":
+                    val_irr = val_native
+                    val_usd = (val_native / rate_at) if rate_at and rate_at > 0 else None
+                else:
+                    val_usd = val_native
+                    val_irr = (val_native * rate_at) if rate_at and rate_at > 0 else None
+                if val_irr is None or val_usd is None:
+                    continue
+                comp_rows.append({"date_jalali": r["date_jalali"], "val_irr": val_irr, "val_usd": val_usd})
+
+            if len(comp_rows) >= 2:
+                base_irr = comp_rows[0]["val_irr"]
+                base_usd = comp_rows[0]["val_usd"]
+                dates = [row["date_jalali"] for row in comp_rows]
+                irr_index = [(row["val_irr"] / base_irr) * 100 for row in comp_rows]
+                usd_index = [(row["val_usd"] / base_usd) * 100 for row in comp_rows]
+
+                st.subheader("📈 نمودار مقایسه‌ای (نرمال‌شده به ۱۰۰)")
+                st.caption("آبی بالا + سبز پایین = تله دلار | خط سبز = ارزش واقعی دلاری")
+
+                fig_cmp = go.Figure()
+                fig_cmp.add_trace(go.Scatter(x=dates, y=irr_index, mode="lines+markers", name="ارزش ریالی",
+                                             line=dict(color="#3b82f6", width=3), marker=dict(size=7)))
+                fig_cmp.add_trace(go.Scatter(x=dates, y=usd_index, mode="lines+markers", name="ارزش دلاری",
+                                             line=dict(color="#10b981", width=3), marker=dict(size=7)))
+                fig_cmp.update_layout(
+                    font=dict(family="Vazirmatn, Tahoma", size=13, color="#e6edf3" if _dark else "#1f2937"),
+                    yaxis=dict(title="شاخص (پایه=۱۰۰)", tickformat=".0f"),
+                    xaxis=dict(title="تاریخ"), margin=dict(t=30, b=20),
+                    hovermode="x unified",
+                    paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
+                    plot_bgcolor="rgba(0,0,0,0)" if _dark else "white",
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5))
+                st.plotly_chart(fig_cmp, use_container_width=True)
+
+                last_irr = irr_index[-1]
+                last_usd = usd_index[-1]
+                if last_irr > 105 and last_usd < 95:
+                    st.error(f"🔴 **تله دلار:** ارزش ریالی {last_irr-100:+.1f}% رشد کرده ولی ارزش دلاری {last_usd-100:+.1f}% افت کرده.")
+                elif last_usd > 105:
+                    st.success(f"🟢 **سود دلاری واقعی:** {last_usd-100:+.1f}% رشد ارزش دلاری.")
+                elif last_usd < 95:
+                    st.warning(f"🟡 **ضرر دلاری:** {last_usd-100:+.1f}% افت ارزش دلاری.")
+                else:
+                    st.info(f"⚪ ارزش دلاری {last_usd-100:+.1f}% — تعادل.")
+
+        # ============ تاریخچه رکوردها (موجود) ============
         st.subheader("📋 تاریخچه رکوردها")
         for r in reversed(records):
             with st.container(border=True):
@@ -1557,7 +1632,10 @@ elif selected.startswith("asset_"):
                     st.session_state[f"edit_open_rec_{r['id']}"] = not st.session_state.get(f"edit_open_rec_{r['id']}", False)
                 if c7.button("🗑️", key=f"del_rec_{r['id']}", help="حذف"):
                     asset["records"] = [x for x in asset["records"] if x["id"] != r["id"]]
-                    st.session_state.data = data; save_all(data); st.rerun()
+                    st.session_state.data = data
+                    save_all(data)
+                    st.rerun()
+
                 if st.session_state.get(f"edit_open_rec_{r['id']}", False):
                     rvk = f"v_rec_{r['id']}"
                     rfk = f"edit_rec_{r['id']}_v{get_version(rvk)}"
@@ -1580,12 +1658,17 @@ elif selected.startswith("asset_"):
                                         break
                                 st.session_state.data = data
                                 st.session_state[f"edit_open_rec_{r['id']}"] = False
-                                bump_version(rvk); save_all(data); st.rerun()
+                                bump_version(rvk)
+                                save_all(data)
+                                st.rerun()
+
         st.divider()
         with st.expander("⚠️ حذف کل دارایی"):
             _idx = next((i for i, x in enumerate(data["assets"]) if x["id"] == asset["id"]), 0)
             ok = st.checkbox("مطمئنم", key=f"confirm_del_{asset['id']}_{_idx}")
             if st.button("🗑️ حذف", disabled=not ok, key=f"del_btn_{asset['id']}_{_idx}"):
                 data["assets"] = [x for x in data["assets"] if x["id"] != asset["id"]]
-                st.session_state.data = data; save_all(data)
-                st.session_state.pending_nav = "overview"; st.rerun()
+                st.session_state.data = data
+                save_all(data)
+                st.session_state.pending_nav = "overview"
+                st.rerun()
