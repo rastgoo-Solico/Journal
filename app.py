@@ -1516,9 +1516,9 @@ elif selected.startswith("asset_"):
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("📦 تعداد", fmt_num(rec["quantity"]) if rec else "—")
-        c2.metric("💲 قیمت", f"{fmt_num(rec['unit_price'])} {currency_label(asset['currency'])}" if rec else "—")
-        c3.metric("💰 ارزش", f"{fmt_num(value)} {currency_label(asset['currency'])}" if rec else "—")
-        c4.metric("💵 دلاری", f"${usd_val:,.2f}" if usd_val is not None else "—")
+        c2.metric("💲 قیمت هر واحد", f"{fmt_num(rec['unit_price'])} {currency_label(asset['currency'])}" if rec else "—")
+        c3.metric("💰 ارزش کل", f"{fmt_num(value)} {currency_label(asset['currency'])}" if rec else "—")
+        c4.metric("💵 ارزش دلاری", f"${usd_val:,.2f}" if usd_val is not None else "—")
 
         with st.container(border=True):
             st.subheader("➕ ثبت رکورد روزانه")
@@ -1526,7 +1526,7 @@ elif selected.startswith("asset_"):
                 c1, c2, c3, c4 = st.columns([2, 2, 2, 3])
                 dtext = c1.text_input("تاریخ", value=today_jalali_str())
                 qty = c2.number_input("تعداد", min_value=0.0, format="%.4f", step=1.0)
-                price = c3.number_input(f"قیمت ({currency_label(asset['currency'])})", min_value=0.0, format="%.2f", step=1000.0)
+                price = c3.number_input(f"قیمت هر واحد ({currency_label(asset['currency'])})", min_value=0.0, format="%.2f", step=1000.0)
                 note = c4.text_input("توضیح")
                 if st.form_submit_button("💾 ثبت", use_container_width=True):
                     jd = parse_jalali(dtext)
@@ -1544,9 +1544,10 @@ elif selected.startswith("asset_"):
 
         records = sorted(asset.get("records", []), key=lambda r: r.get("date_gregorian", ""))
 
-        # ============ نمودار روند ساده ============
+        # ============ نمودار روند ساده (ارزش کل) ============
         if len(records) >= 2:
-            st.subheader("📈 روند ارزش")
+            st.subheader("📈 روند ارزش کل")
+            st.caption("⚠️ این نمودار ارزش کل را نشان می‌دهد (تعداد × قیمت) — با خرید/فروش شما بالا/پایین می‌رود")
             chart_rows = [{"تاریخ": r["date_jalali"], "ارزش": r["quantity"] * r["unit_price"]} for r in records]
             cdf = pd.DataFrame(chart_rows)
             fig = px.line(cdf, x="تاریخ", y="ارزش", markers=True,
@@ -1557,7 +1558,7 @@ elif selected.startswith("asset_"):
                              plot_bgcolor="rgba(0,0,0,0)" if _dark else "white")
             st.plotly_chart(fig, use_container_width=True)
 
-        # ============ 📈 نمودار مقایسه‌ای نرمال‌شده ============
+        # ============ 📈 نمودار مقایسه‌ای «قیمت هر واحد» ============
         if len(records) >= 2:
             usd_rates_sorted = sorted(data.get("usd_rates", []), key=lambda x: x.get("created_at", ""))
             comp_rows = []
@@ -1569,48 +1570,48 @@ elif selected.startswith("asset_"):
                         rate_at = ur["rate"]
                     else:
                         break
-                val_native = r["quantity"] * r["unit_price"]
-                if asset["currency"] == "IRR":
-                    val_irr = val_native
-                    val_usd = (val_native / rate_at) if rate_at and rate_at > 0 else None
-                else:
-                    val_usd = val_native
-                    val_irr = (val_native * rate_at) if rate_at and rate_at > 0 else None
-                if val_irr is None or val_usd is None or rate_at is None:
+                if rate_at is None or rate_at <= 0:
                     continue
+                unit_price_native = r["unit_price"]
+                if asset["currency"] == "IRR":
+                    unit_price_irr = unit_price_native
+                    unit_price_usd = unit_price_native / rate_at
+                else:
+                    unit_price_usd = unit_price_native
+                    unit_price_irr = unit_price_native * rate_at
                 comp_rows.append({
                     "date_jalali": r["date_jalali"],
-                    "val_irr": val_irr,
-                    "val_usd": val_usd,
+                    "record": r,
+                    "unit_price_irr": unit_price_irr,
+                    "unit_price_usd": unit_price_usd,
                     "usd_rate": rate_at,
-                    "unit_price": r["unit_price"],
-                    "quantity": r["quantity"]
+                    "quantity": r["quantity"],
+                    "unit_price_native": unit_price_native
                 })
 
             if len(comp_rows) >= 2:
-                # نرمال‌سازی به ۱۰۰
-                base_irr = comp_rows[0]["val_irr"]
-                base_usd = comp_rows[0]["val_usd"]
+                base_irr = comp_rows[0]["unit_price_irr"]
+                base_usd = comp_rows[0]["unit_price_usd"]
                 base_rate = comp_rows[0]["usd_rate"]
 
                 dates = [row["date_jalali"] for row in comp_rows]
-                irr_index = [(row["val_irr"] / base_irr) * 100 for row in comp_rows]
-                usd_index = [(row["val_usd"] / base_usd) * 100 for row in comp_rows]
+                irr_index = [(row["unit_price_irr"] / base_irr) * 100 for row in comp_rows]
+                usd_index = [(row["unit_price_usd"] / base_usd) * 100 for row in comp_rows]
                 rate_index = [(row["usd_rate"] / base_rate) * 100 for row in comp_rows]
 
-                st.subheader("📈 نمودار مقایسه‌ای (نرمال‌شده به ۱۰۰)")
-                st.caption("🔵 ارزش ریالی | 🟢 ارزش دلاری | 🟠 نرخ دلار (مرجع) — آبی بالا + سبز پایین = تله دلار")
+                st.subheader("📈 نمودار مقایسه‌ای «قیمت هر واحد» (نرمال‌شده به ۱۰۰)")
+                st.caption("🔵 قیمت هر واحد به ریال | 🟢 قیمت هر واحد به دلار | 🟠 نرخ دلار (مرجع) — مستقل از تعداد سهام شما")
 
                 fig_cmp = go.Figure()
-                fig_cmp.add_trace(go.Scatter(x=dates, y=irr_index, mode="lines+markers", name="ارزش ریالی",
+                fig_cmp.add_trace(go.Scatter(x=dates, y=irr_index, mode="lines+markers", name="قیمت واحد (ریال)",
                                              line=dict(color="#3b82f6", width=3), marker=dict(size=7)))
-                fig_cmp.add_trace(go.Scatter(x=dates, y=usd_index, mode="lines+markers", name="ارزش دلاری",
+                fig_cmp.add_trace(go.Scatter(x=dates, y=usd_index, mode="lines+markers", name="قیمت واحد (دلار)",
                                              line=dict(color="#10b981", width=3), marker=dict(size=7)))
                 fig_cmp.add_trace(go.Scatter(x=dates, y=rate_index, mode="lines+markers", name="نرخ دلار",
                                              line=dict(color="#f59e0b", width=2, dash="dot"), marker=dict(size=6)))
                 fig_cmp.update_layout(
                     font=dict(family="Vazirmatn, Tahoma", size=13, color="#e6edf3" if _dark else "#1f2937"),
-                    yaxis=dict(title="شاخص (پایه=۱۰۰)", tickformat=".0f"),
+                    yaxis=dict(title="شاخص قیمت هر واحد (پایه=۱۰۰)", tickformat=".0f"),
                     xaxis=dict(title="تاریخ"), margin=dict(t=30, b=20),
                     hovermode="x unified",
                     paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
@@ -1623,44 +1624,41 @@ elif selected.startswith("asset_"):
                 last_usd = usd_index[-1]
                 last_rate = rate_index[-1]
                 if last_irr > 105 and last_usd < 95:
-                    st.error(f"🔴 **تله دلار:** ارزش ریالی {last_irr-100:+.1f}% رشد ولی ارزش دلاری {last_usd-100:+.1f}% افت. نرخ دلار {last_rate-100:+.1f}% رشد کرده.")
+                    st.error(f"🔴 **تله دلار:** قیمت هر واحد به ریال {last_irr-100:+.1f}% رشد ولی به دلار {last_usd-100:+.1f}% افت. نرخ دلار {last_rate-100:+.1f}% رشد کرده — رشد ریالی فقط از دلار بوده.")
                 elif last_usd > 105:
-                    st.success(f"🟢 **سود دلاری واقعی:** ارزش دلاری {last_usd-100:+.1f}% رشد کرده (نرخ دلار {last_rate-100:+.1f}%).")
+                    st.success(f"🟢 **سود دلاری واقعی:** قیمت هر واحد به دلار {last_usd-100:+.1f}% رشد (نرخ دلار {last_rate-100:+.1f}%).")
                 elif last_usd < 95:
-                    st.warning(f"🟡 **ضرر دلاری:** ارزش دلاری {last_usd-100:+.1f}% افت کرده.")
+                    st.warning(f"🟡 **ضرر دلاری:** قیمت هر واحد به دلار {last_usd-100:+.1f}% افت کرده (نرخ دلار {last_rate-100:+.1f}%).")
                 else:
-                    st.info(f"⚪ ارزش دلاری {last_usd-100:+.1f}% — تعادل نسبی.")
+                    st.info(f"⚪ قیمت هر واحد به دلار {last_usd-100:+.1f}% — تعادل نسبی.")
 
-                # ============ 📊 جدول تاریخچه با ۲ ستون دلاری ============
+                # ============ 📊 جدول تاریخچه با قیمت هر واحد ============
                 st.subheader("📋 تاریخچه رکوردها")
 
-                # هدر
-                hc = st.columns([1.8, 1.6, 1.6, 1.8, 1.8, 1.6, 0.7, 0.7])
+                hc = st.columns([1.8, 1.4, 1.6, 1.6, 1.6, 1.6, 0.7, 0.7])
                 hc[0].caption("**تاریخ**")
                 hc[1].caption("**تعداد**")
-                hc[2].caption("**قیمت واحد**")
-                hc[3].caption("**ارزش ریالی**")
-                hc[4].caption("**معادل دلاری**")
+                hc[2].caption("**قیمت واحد (ریال)**")
+                hc[3].caption("**قیمت واحد (دلار)**")
+                hc[4].caption("**نرخ دلار**")
                 hc[5].caption("**بازده دلاری**")
                 hc[6].caption("**✏️**")
                 hc[7].caption("**🗑️**")
                 st.divider()
 
-                # ردیف‌ها (برعکس — جدیدترین بالا)
                 for i, row in enumerate(reversed(comp_rows)):
                     orig_idx = len(comp_rows) - 1 - i
-                    r = records[orig_idx]
-                    usd_return = (row["val_usd"] / base_usd - 1) * 100 if base_usd else 0
-                    irr_disp = f"{row['val_irr']:,.0f}" if asset["currency"] == "IRR" else f"{row['val_irr']:,.0f} ریال"
-                    usd_disp = f"${row['val_usd']:,.2f}"
-                    price_disp = f"{row['unit_price']:,.0f}"
+                    r = row["record"]
+                    usd_return = (row["unit_price_usd"] / base_usd - 1) * 100 if base_usd else 0
+                    irr_disp = f"{row['unit_price_irr']:,.0f}" if asset["currency"] == "IRR" else f"{row['unit_price_irr']:,.0f}"
+                    usd_disp = f"${row['unit_price_usd']:,.4f}"
 
-                    rc = st.columns([1.8, 1.6, 1.6, 1.8, 1.8, 1.6, 0.7, 0.7])
+                    rc = st.columns([1.8, 1.4, 1.6, 1.6, 1.6, 1.6, 0.7, 0.7])
                     rc[0].markdown(f"📅 {row['date_jalali']}")
                     rc[1].markdown(f"{row['quantity']:,.2f}")
-                    rc[2].markdown(price_disp)
-                    rc[3].markdown(irr_disp)
-                    rc[4].markdown(usd_disp)
+                    rc[2].markdown(irr_disp)
+                    rc[3].markdown(usd_disp)
+                    rc[4].markdown(f"{row['usd_rate']:,.0f}")
 
                     if abs(usd_return) >= 0.05:
                         color = "#10b981" if usd_return > 0 else "#ef4444"
@@ -1686,7 +1684,7 @@ elif selected.startswith("asset_"):
                             ec1, ec2, ec3 = st.columns([2, 2, 2])
                             ed_date = ec1.text_input("تاریخ", value=r["date_jalali"])
                             ed_qty = ec2.number_input("تعداد", value=float(r["quantity"]), min_value=0.0, format="%.4f", step=1.0)
-                            ed_price = ec3.number_input("قیمت", value=float(r["unit_price"]), min_value=0.0, format="%.2f", step=1000.0)
+                            ed_price = ec3.number_input("قیمت هر واحد", value=float(r["unit_price"]), min_value=0.0, format="%.2f", step=1000.0)
                             ed_note = st.text_input("توضیح", value=r.get("note", ""))
                             if st.form_submit_button("💾 ذخیره", use_container_width=True):
                                 jd = parse_jalali(ed_date)
