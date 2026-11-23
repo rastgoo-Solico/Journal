@@ -699,23 +699,31 @@ def compute_monthly_returns(data, year_jalali):
                 monthly[month] = None
                 continue
 
-            # آخرین وضعیت ثبت‌شده پیش از شروع ماه
+            # فقط رکوردهای واقعاً ثبت‌شده در همین ماه
+            month_records = [
+                r for r in records
+                if start_g <= r.get("date_gregorian", "")[:10] < end_g
+            ]
+
+            # ماهی که هیچ داده‌ای ندارد نباید بازده ساختگیِ صفر بگیرد.
+            if not month_records:
+                monthly[month] = None
+                continue
+
+            # مبنای شروع: آخرین وضعیت قبل از ماه.
+            # اگر سابقه‌ای وجود ندارد (مثلاً اولین ثبت در ۸ آبان است)،
+            # اولین رکورد همان ماه مبنای شروع دوره مشاهده‌شده می‌شود.
             start_candidates = [
                 r for r in records
                 if r.get("date_gregorian", "")[:10] < start_g
             ]
-            # آخرین وضعیت ثبت‌شده تا پایان ماه
-            end_candidates = [
-                r for r in records
-                if r.get("date_gregorian", "")[:10] < end_g
-            ]
+            start_rec = start_candidates[-1] if start_candidates else month_records[0]
+            end_rec = month_records[-1]
 
-            if not start_candidates or not end_candidates:
+            # با یک رکورد تنها، تغییر قیمت درون دوره قابل محاسبه نیست.
+            if start_rec is end_rec:
                 monthly[month] = None
                 continue
-
-            start_rec = start_candidates[-1]
-            end_rec = end_candidates[-1]
 
             start_price_irr = price_irr_for_record(
                 start_rec, item["type"], item["currency"]
@@ -768,7 +776,8 @@ def render_monthly_returns_page(data):
     st.header("📅 بازده ماهانه")
     st.caption(
         "محاسبه بازده بر مبنای تغییر ارزش ریالی هر واحد؛ "
-        "سود و زیان ریالی با تعداد دارایی ابتدای ماه محاسبه می‌شود."
+        "اگر سابقه‌ای پیش از ماه وجود نداشته باشد، بازده از اولین ثبت همان ماه "
+        "تا آخرین ثبت ماه محاسبه می‌شود."
     )
     _dark = get_settings(data)["dark_mode"]
 
