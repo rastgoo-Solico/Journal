@@ -20,10 +20,11 @@ DEFAULT_NAV_ICONS = {
     "journal": {"icon": "fa-circle-plus", "color": "#10b981"},
     "usd": {"icon": "fa-dollar-sign", "color": "#f59e0b"},
     "gold": {"icon": "fa-coins", "color": "#eab308"},
+    "monthly": {"icon": "fa-calendar-days", "color": "#ec4899"},
     "settings": {"icon": "fa-gear", "color": "#6b7280"},
 }
-NAV_LABELS = {"overview": "نمای کلی", "journal": "افزودن دارایی", "usd": "دلار", "gold": "صندوق‌های طلا", "settings": "تنظیمات"}
-NAV_EMOJI = {"overview": "📊", "journal": "➕", "usd": "💵", "gold": "🥇", "settings": "⚙️"}
+NAV_LABELS = {"overview": "نمای کلی", "journal": "افزودن دارایی", "usd": "دلار", "gold": "صندوق‌های طلا", "monthly": "بازده ماهانه", "settings": "تنظیمات"}
+NAV_EMOJI = {"overview": "📊", "journal": "➕", "usd": "💵", "gold": "🥇", "monthly": "📅", "settings": "⚙️"}
 
 FALLBACK_ICONS = [
     {"class": "fa-folder", "label": "Folder"}, {"class": "fa-coins", "label": "Coins"},
@@ -536,13 +537,11 @@ def unit_usd_equivalent(record):
     return record["unit_price"] / rate
 
 def gold_gram_per_unit(record):
-    """گرم طلا در هر واحد صندوق"""
     if record.get("ounce_price_usd", 0) <= 0 or record.get("usd_rate_used", 0) <= 0 or record.get("unit_price", 0) <= 0:
         return None
     return (record["unit_price"] * 31.1035) / (record["ounce_price_usd"] * record["usd_rate_used"])
 
 def gold_fund_analytics(fund):
-    """محاسبه معادل دلاری، بازده، تغییرات برای هر رکورد"""
     records = sorted(fund.get("records", []), key=lambda r: r.get("date_gregorian", ""))
     if not records: return []
     rows = []
@@ -566,7 +565,6 @@ def gold_fund_analytics(fund):
     return rows
 
 def dollar_trap_analysis(fund, days=30):
-    """تحلیل تله دلار در N روز گذشته"""
     records = sorted(fund.get("records", []), key=lambda r: r.get("date_gregorian", ""))
     if len(records) < 2: return None
     last = records[-1]
@@ -590,21 +588,192 @@ def dollar_trap_analysis(fund, days=30):
             "gap": usd_change - ounce_change, "days": days,
             "older_date": older.get("date_jalali"), "last_date": last.get("date_jalali")}
 
-def ounce_signal(fund):
-    """سیگنال بر اساس انس (نه پرمیوم)"""
+def ounce_signal(fund, days=90):
+    """سیگنال بر اساس انس (نسبت به میانگین ۹۰ روز اخیر)"""
     records = sorted(fund.get("records", []), key=lambda r: r.get("date_gregorian", ""))
     if len(records) < 3: return "⚪ داده کافی نیست"
     last = records[-1]
-    ounces = [r.get("ounce_price_usd", 0) for r in records if r.get("ounce_price_usd", 0) > 0]
-    if not ounces: return "⚪ داده انس کافی نیست"
-    avg = sum(ounces) / len(ounces)
+    last_date_str = last.get("date_gregorian", "")[:10]
+    if not last_date_str: return "⚪"
+    try:
+        dt_last = datetime.fromisoformat(last_date_str + "T00:00:00")
+        cutoff = (dt_last - timedelta(days=days)).strftime("%Y-%m-%d")
+    except Exception:
+        return "⚪"
+    recent = [r for r in records if r.get("date_gregorian", "")[:10] >= cutoff and r.get("ounce_price_usd", 0) > 0]
+    if len(recent) < 3:
+        recent = [r for r in records if r.get("ounce_price_usd", 0) > 0]
+    if not recent: return "⚪ داده انس کافی نیست"
+    avg = sum(r["ounce_price_usd"] for r in recent) / len(recent)
     current = last.get("ounce_price_usd", 0)
     if current <= 0 or avg <= 0: return "⚪ داده معتبر نیست"
     diff = (current / avg - 1) * 100
-    if diff > 5: return f"🔴 انس {diff:+.1f}% بالای میانگین — فروش"
+    if diff > 5: return f"🔴 انس {diff:+.1f}% بالای میانگین {days}روزه — فروش"
     elif diff > 0: return f"🟡 انس {diff:+.1f}% بالای میانگین — کمی فروش"
     elif diff > -5: return f"🟢 انس {diff:+.1f}% زیر میانگین — کمی خرید"
     else: return f"🟢🟢 انس {diff:+.1f}% زیر میانگین — خرید قوی"
+
+# ================== محاسبه بازده ماهانه ==================
+def compute_monthly_returns(data, year_jalali):
+    usd_rates_sorted = sorted(data.get("usd_rates", []), key=lambda x: x.get("created_at", ""))
+
+    def get_rate_at(date_str):
+        rate = None
+        for ur in usd_rates_sorted:
+            if ur.get("created_at", "")[:10] <= date_str:
+                rate = ur["rate"]
+            else:
+                break
+        return rate
+
+    def price_usd_for_record(record, item_type, item_currency):
+        up = record.get("unit_price", 0)
+        if up <= 0: return None
+        if item_type == "gold":
+            rate = record.get("usd_rate_used", 0)
+            return up / rate if rate > 0 else None
+        if item_currency == "IRR":
+            date_str = record.get("date_gregorian", "")[:10]
+            rate = get_rate_at(date_str)
+            return up / rate if rate and rate > 0 else None
+        return up
+
+    items = []
+    for a in data.get("assets", []):
+        items.append({"id": f"asset_{a['id']}", "name": a["name"], "type": "asset",
+                      "currency": a["currency"], "records": a.get("records", [])})
+    for gf in data.get("gold_funds", []):
+        items.append({"id": f"gold_{gf['id']}", "name": f"🥇 {gf['name']}", "type": "gold",
+                      "currency": "IRR", "records": gf.get("records", [])})
+
+    results = {}
+    for item in items:
+        monthly = {}
+        for m in range(1, 13):
+            try:
+                end_boundary = jdatetime.date(year_jalali + 1, 1, 1) if m == 12 else jdatetime.date(year_jalali, m + 1, 1)
+                end_boundary_g = end_boundary.togregorian().strftime("%Y-%m-%d")
+                start_boundary = jdatetime.date(year_jalali, m, 1)
+                start_boundary_g = start_boundary.togregorian().strftime("%Y-%m-%d")
+            except Exception:
+                monthly[m] = None
+                continue
+            end_candidates = [r for r in item["records"] if r.get("date_gregorian", "")[:10] < end_boundary_g]
+            start_candidates = [r for r in item["records"] if r.get("date_gregorian", "")[:10] < start_boundary_g]
+            if not end_candidates or not start_candidates:
+                monthly[m] = None
+                continue
+            end_rec = max(end_candidates, key=lambda r: r.get("date_gregorian", ""))
+            start_rec = max(start_candidates, key=lambda r: r.get("date_gregorian", ""))
+            end_v = price_usd_for_record(end_rec, item["type"], item["currency"])
+            start_v = price_usd_for_record(start_rec, item["type"], item["currency"])
+            monthly[m] = (end_v / start_v - 1) * 100 if (end_v and start_v and start_v > 0) else None
+        results[item["id"]] = {"name": item["name"], "monthly": monthly, "type": item["type"]}
+    return results
+
+def render_monthly_returns_page(data):
+    st.header("📅 بازده ماهانه")
+    st.caption("بازده ماهانه هر دارایی/صندوق بر حسب دلار — مقایسه واقعی مستقل از تورم ریالی")
+    _dark = get_settings(data)["dark_mode"]
+
+    all_dates = []
+    for a in data.get("assets", []):
+        for r in a.get("records", []):
+            if r.get("date_jalali"): all_dates.append(r["date_jalali"])
+    for gf in data.get("gold_funds", []):
+        for r in gf.get("records", []):
+            if r.get("date_jalali"): all_dates.append(r["date_jalali"])
+
+    years = sorted(set(int(d[:4]) for d in all_dates if d[:4].isdigit()), reverse=True)
+    if not years:
+        st.info("هنوز داده‌ای ثبت نشده.")
+        return
+
+    month_names_full = ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+                        "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"]
+
+    c1, c2, c3 = st.columns(3)
+    selected_year = c1.selectbox("سال (شمسی)", years, key="mr_year")
+    type_filter = c2.selectbox("نوع", ["همه", "دارایی‌ها", "صندوق‌های طلا"], key="mr_type")
+    month_from = c3.selectbox("از ماه", month_names_full, index=0, key="mr_from")
+    month_to = st.selectbox("تا ماه", month_names_full, index=11, key="mr_to")
+
+    from_idx = month_names_full.index(month_from) + 1
+    to_idx = month_names_full.index(month_to) + 1
+    if from_idx > to_idx:
+        st.warning("ماه شروع باید قبل از ماه پایان باشد.")
+        return
+
+    results = compute_monthly_returns(data, selected_year)
+    if type_filter == "دارایی‌ها":
+        results = {k: v for k, v in results.items() if v["type"] == "asset"}
+    elif type_filter == "صندوق‌های طلا":
+        results = {k: v for k, v in results.items() if v["type"] == "gold"}
+    if not results:
+        st.info("داده‌ای برای این انتخاب وجود ندارد.")
+        return
+
+    month_labels = month_names_full[from_idx - 1:to_idx]
+    plot_data = {}
+    for item_id, info in results.items():
+        values = [info["monthly"].get(m) for m in range(from_idx, to_idx + 1)]
+        if any(v is not None for v in values):
+            plot_data[info["name"]] = values
+
+    if not plot_data:
+        st.info("برای این بازه، بازده قابل محاسبه‌ای وجود ندارد.")
+        return
+
+    mode = st.radio("نمایش بر اساس",
+                    ["📊 درصد (%)", "💵 به ازای هر ۱۰۰۰ دلار"],
+                    horizontal=True, key="mr_mode")
+
+    fig = go.Figure()
+    for name, values in plot_data.items():
+        if mode.startswith("📊"):
+            y_vals = [v if v is not None else 0 for v in values]
+            text_vals = [f"{v:+.1f}%" if v is not None else "—" for v in values]
+            y_title = "بازده ماهانه (٪)"
+        else:
+            y_vals = [(v * 10) if v is not None else 0 for v in values]
+            text_vals = [f"${v*10:+.1f}" if v is not None else "—" for v in values]
+            y_title = "رشد/افت به ازای هر ۱۰۰۰ دلار"
+        fig.add_trace(go.Bar(name=name, x=month_labels, y=y_vals, text=text_vals, textposition="outside"))
+
+    fig.update_layout(
+        barmode="group",
+        title=f"بازده ماهانه سال {selected_year}",
+        xaxis_title="ماه", yaxis_title=y_title,
+        font=dict(family="Vazirmatn, Tahoma", size=12, color="#e6edf3" if _dark else "#1f2937"),
+        paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
+        plot_bgcolor="rgba(0,0,0,0)" if _dark else "white",
+        hovermode="x unified", height=500,
+        legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5))
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.subheader("📋 جدول بازده ماهانه (%)")
+    df_table = pd.DataFrame()
+    df_table["ماه"] = month_labels
+    for name, values in plot_data.items():
+        df_table[name] = [f"{v:+.1f}%" if v is not None else "—" for v in values]
+    render_html_table(df_table, dark=_dark)
+
+    st.subheader("📊 خلاصه بازده در بازه انتخابی")
+    summary_rows = []
+    for name, values in plot_data.items():
+        valid = [v for v in values if v is not None]
+        if valid:
+            cumulative = 1
+            for v in valid: cumulative *= (1 + v / 100)
+            summary_rows.append({
+                "نام": name,
+                "بازده کل بازه": f"{(cumulative - 1) * 100:+.1f}%",
+                "میانگین ماهانه": f"{sum(valid) / len(valid):+.1f}%",
+                "بهترین ماه": f"{max(valid):+.1f}%",
+                "بدترین ماه": f"{min(valid):+.1f}%",
+                "تعداد ماه": len(valid)})
+    if summary_rows:
+        render_html_table(pd.DataFrame(summary_rows), dark=_dark)
 
 # ================== گرید آیکون ==================
 def _icon_grid_picker(prefix, current, on_save):
@@ -749,12 +918,13 @@ with st.sidebar:
             except Exception as e: st.error(f"فایل معتبر نیست: {e}")
 
 # ================== ناوبری ==================
-nav_options = ["overview", "journal", "usd", "gold"] + [f"asset_{a['id']}" for a in assets] + ["settings"]
+nav_options = ["overview", "journal", "usd", "gold", "monthly"] + [f"asset_{a['id']}" for a in assets] + ["settings"]
 nav_labels = {
     "overview": f"{NAV_EMOJI['overview']} {NAV_LABELS['overview']}",
     "journal": f"{NAV_EMOJI['journal']} {NAV_LABELS['journal']}",
     "usd": f"{NAV_EMOJI['usd']} {NAV_LABELS['usd']}",
     "gold": f"{NAV_EMOJI['gold']} {NAV_LABELS['gold']}",
+    "monthly": f"{NAV_EMOJI['monthly']} {NAV_LABELS['monthly']}",
     "settings": f"{NAV_EMOJI['settings']} {NAV_LABELS['settings']}",
 }
 for a in assets: nav_labels[f"asset_{a['id']}"] = f"{asset_overview_emoji(a)} {a['name']}"
@@ -853,7 +1023,7 @@ def render_settings_page(data):
     with t_nav:
         st.subheader("🎨 آیکون منو")
         st.caption("روی هر آیکون کلیک کنید. ✅ = فعلی")
-        for nav_key in ["overview", "journal", "usd", "gold", "settings"]:
+        for nav_key in ["overview", "journal", "usd", "gold", "monthly", "settings"]:
             cfg = settings["nav_icons"].get(nav_key, DEFAULT_NAV_ICONS[nav_key])
             with st.container(border=True):
                 c1, c2 = st.columns([1, 4])
@@ -1332,6 +1502,7 @@ elif selected == "gold":
                                 "date_jalali": jd.strftime("%Y/%m/%d"),
                                 "unit_price": g_price, "ounce_price_usd": g_ounce,
                                 "usd_rate_used": usd_rate_current, "note": g_note.strip()})
+                            sync_usd_rates_to_gold_funds(data)
                             st.session_state.data = data
                             save_all(data)
                             for k in [f"gdate_{fund['id']}", f"gprice_{fund['id']}", f"gounce_{fund['id']}", f"gnote_{fund['id']}"]:
@@ -1479,9 +1650,15 @@ elif selected == "gold":
                     save_all(data)
                     st.rerun()
             st.divider()
+
+# ================== 📅 صفحه بازده ماهانه ==================
+elif selected == "monthly":
+    render_monthly_returns_page(data)
+
 # ================== صفحه تنظیمات ==================
 elif selected == "settings":
     render_settings_page(data)
+
 # ================== صفحه دارایی اختصاصی ==================
 elif selected.startswith("asset_"):
     aid = selected.replace("asset_", "")
@@ -1544,7 +1721,6 @@ elif selected.startswith("asset_"):
 
         records = sorted(asset.get("records", []), key=lambda r: r.get("date_gregorian", ""))
 
-        # ============ نمودار روند ساده (ارزش کل) ============
         if len(records) >= 2:
             st.subheader("📈 روند ارزش کل")
             st.caption("⚠️ این نمودار ارزش کل را نشان می‌دهد (تعداد × قیمت) — با خرید/فروش شما بالا/پایین می‌رود")
@@ -1558,7 +1734,6 @@ elif selected.startswith("asset_"):
                              plot_bgcolor="rgba(0,0,0,0)" if _dark else "white")
             st.plotly_chart(fig, use_container_width=True)
 
-        # ============ 📈 نمودار مقایسه‌ای «قیمت هر واحد» ============
         if len(records) >= 2:
             usd_rates_sorted = sorted(data.get("usd_rates", []), key=lambda x: x.get("created_at", ""))
             comp_rows = []
@@ -1619,7 +1794,6 @@ elif selected.startswith("asset_"):
                     legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5))
                 st.plotly_chart(fig_cmp, use_container_width=True)
 
-                # تحلیل خودکار
                 last_irr = irr_index[-1]
                 last_usd = usd_index[-1]
                 last_rate = rate_index[-1]
@@ -1632,9 +1806,7 @@ elif selected.startswith("asset_"):
                 else:
                     st.info(f"⚪ قیمت هر واحد به دلار {last_usd-100:+.1f}% — تعادل نسبی.")
 
-                # ============ 📊 جدول تاریخچه با قیمت هر واحد ============
                 st.subheader("📋 تاریخچه رکوردها")
-
                 hc = st.columns([1.8, 1.4, 1.6, 1.6, 1.6, 1.6, 0.7, 0.7])
                 hc[0].caption("**تاریخ**")
                 hc[1].caption("**تعداد**")
@@ -1646,11 +1818,10 @@ elif selected.startswith("asset_"):
                 hc[7].caption("**🗑️**")
                 st.divider()
 
-                for i, row in enumerate(reversed(comp_rows)):
-                    orig_idx = len(comp_rows) - 1 - i
+                for row in reversed(comp_rows):
                     r = row["record"]
                     usd_return = (row["unit_price_usd"] / base_usd - 1) * 100 if base_usd else 0
-                    irr_disp = f"{row['unit_price_irr']:,.0f}" if asset["currency"] == "IRR" else f"{row['unit_price_irr']:,.0f}"
+                    irr_disp = f"{row['unit_price_irr']:,.0f} ریال"
                     usd_disp = f"${row['unit_price_usd']:,.4f}"
 
                     rc = st.columns([1.8, 1.4, 1.6, 1.6, 1.6, 1.6, 0.7, 0.7])
