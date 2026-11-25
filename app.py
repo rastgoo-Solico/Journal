@@ -1311,3 +1311,4 @@ elif selected == "monthly":
     page_monthly(data, dark)
 elif selected == "settings":
     page_settings(data)
+
