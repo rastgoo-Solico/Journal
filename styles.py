@@ -132,3 +132,4 @@ def inject_app(data: dict) -> None:
     settings = data.get("settings", {}) if isinstance(data, dict) else {}
     dark = auto_theme(settings)
     st.markdown(_base_css(dark), unsafe_allow_html=True)
+
