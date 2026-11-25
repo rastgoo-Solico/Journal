@@ -1,2072 +1,1313 @@
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-import json
-import os
-import re
-import requests
+"""داشبورد مالی — نسخهٔ Streamlit توسعه‌یافته بر پایهٔ کد قبلی.
+
+قابلیت‌های تازه:
+  • صفحهٔ «جفت ارز مصنوعی» با نمودار نسبت و مقایسهٔ نرمال‌شده
+  • اولویت‌بندی سربرگ‌ها در تنظیمات
+  • تنظیمات در پنل سمت راست (سایدبار)
+  • حالت روز/شب خودکار بر اساس ساعت ورودی کاربر (قابل خاموش/روشن)
+"""
+from __future__ import annotations
+
 import base64
 import gzip
 import hashlib
+import json
+import os
 from datetime import datetime, timedelta
+
 import jdatetime
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import requests
+import streamlit as st
+from styles import FONTS, auto_theme, inject_app, inject_login
 
-from styles import FONTS, inject_login, inject_app
-
-# ================== ثابت‌های پایه ==================
 DEFAULT_NAV_ICONS = {
     "overview": {"icon": "fa-chart-pie", "color": "#3b82f6"},
     "journal": {"icon": "fa-circle-plus", "color": "#10b981"},
+    "assets": {"icon": "fa-wallet", "color": "#3b82f6"},
     "usd": {"icon": "fa-dollar-sign", "color": "#f59e0b"},
     "gold": {"icon": "fa-coins", "color": "#eab308"},
+    "synthetic": {"icon": "fa-arrow-right-arrow-left", "color": "#8b5cf6"},
     "monthly": {"icon": "fa-calendar-days", "color": "#ec4899"},
     "settings": {"icon": "fa-gear", "color": "#6b7280"},
 }
-NAV_LABELS = {"overview": "نمای کلی", "journal": "افزودن دارایی", "usd": "دلار", "gold": "صندوق‌های طلا", "monthly": "بازده ماهانه", "settings": "تنظیمات"}
-NAV_EMOJI = {"overview": "📊", "journal": "➕", "usd": "💵", "gold": "🥇", "monthly": "📅", "settings": "⚙️"}
-
-FALLBACK_ICONS = [
-    {"class": "fa-folder", "label": "Folder"}, {"class": "fa-coins", "label": "Coins"},
-    {"class": "fa-wallet", "label": "Wallet"}, {"class": "fa-money-bill-wave", "label": "Money"},
-    {"class": "fa-dollar-sign", "label": "Dollar"}, {"class": "fa-building-columns", "label": "Bank"},
-    {"class": "fa-piggy-bank", "label": "Piggy Bank"}, {"class": "fa-vault", "label": "Vault"},
-    {"class": "fa-gem", "label": "Gem"}, {"class": "fa-crown", "label": "Crown"},
-    {"class": "fa-house", "label": "House"}, {"class": "fa-building", "label": "Building"},
-    {"class": "fa-car", "label": "Car"}, {"class": "fa-chart-line", "label": "Chart Line"},
-    {"class": "fa-chart-pie", "label": "Chart Pie"}, {"class": "fa-bitcoin-sign", "label": "Bitcoin"},
-    {"class": "fa-ethereum", "label": "Ethereum"}, {"class": "fa-landmark", "label": "Landmark"},
-    {"class": "fa-industry", "label": "Industry"}, {"class": "fa-seedling", "label": "Seedling"},
-    {"class": "fa-briefcase", "label": "Briefcase"}, {"class": "fa-store", "label": "Store"},
-    {"class": "fa-sack-dollar", "label": "Sack Dollar"}, {"class": "fa-receipt", "label": "Receipt"},
-    {"class": "fa-tag", "label": "Tag"}, {"class": "fa-fire", "label": "Fire"},
-    {"class": "fa-bolt", "label": "Bolt"}, {"class": "fa-box", "label": "Box"},
-    {"class": "fa-gear", "label": "Gear"}, {"class": "fa-circle-plus", "label": "Circle Plus"},
-]
-
-CATEGORY_KEYWORDS = {
-    "money": ["coin", "dollar", "money", "wallet", "bank", "cash", "currency", "credit-card", "payment", "receipt", "invoice", "sack", "piggy", "vault", "tax", "donate", "hand-holding", "tip", "price-tag", "bitcoin", "ethereum", "euro", "sterling", "yen", "rupee", "ruble", "won", "lira", "peso", "shekel", "tenge", "exchange", "money-bill", "money-check"],
-    "chart": ["chart", "graph", "trend", "analytics", "presentation-chart", "arrow-trend", "magnifying-glass-chart", "square-poll", "ranking", "signal", "wifi", "spinner", "percent"],
-    "gems": ["gem", "crown", "diamond", "gift", "award", "medal", "star", "trophy", "ribbon", "certificate"],
-    "building": ["building", "house", "home", "office", "factory", "industry", "warehouse", "store", "shop", "landmark", "church", "mosque", "hotel", "school", "hospital", "motel", "tent", "campground"],
-    "transport": ["car", "truck", "plane", "ship", "train", "bus", "bike", "motorcycle", "taxi", "rocket", "helicopter", "boat", "tram", "subway", "van", "tractor", "trailer", "wheelchair"],
-    "goods": ["box", "package", "shipping", "cart", "basket", "bag-shopping", "boxes", "cubes", "cube"],
-    "business": ["briefcase", "handshake", "user-tie", "file-invoice", "file-contract", "clipboard-check", "check-double"],
-    "file": ["folder", "file", "save", "download", "upload", "disk", "document", "paper", "clipboard", "notebook", "book", "bookmark", "newspaper", "scroll", "envelope", "mail"],
-    "user": ["user", "person", "people", "group", "team", "users"],
-    "system": ["gear", "cog", "tool", "wrench", "hammer", "screwdriver", "key", "lock", "shield", "bell", "power-off", "right-from-bracket", "arrow-right-from-bracket", "ellipsis", "bars"],
-    "media": ["camera", "photo", "image", "video", "music", "headphone", "play", "pause", "stop", "record", "microphone", "film", "compact-disc", "volume", "speaker"],
-    "symbol": ["circle-check", "circle-xmark", "circle-plus", "circle-minus", "circle", "square", "triangle", "heart", "plus", "minus", "equals", "question", "info", "exclamation", "ban", "check"],
-    "time": ["clock", "calendar", "time", "hourglass", "stopwatch", "timer", "watch"],
-    "nature": ["fire", "bolt", "sun", "leaf", "tree", "seedling", "water", "droplet", "wind", "snow", "cloud", "moon", "snowflake", "mountain"],
+NAV_LABELS = {
+    "overview": "نمای کلی", "journal": "افزودن دارایی", "assets": "دارایی‌ها",
+    "usd": "دلار", "gold": "صندوق‌های طلا", "synthetic": "جفت مصنوعی",
+    "monthly": "بازده ماهانه", "settings": "تنظیمات",
 }
-
-CATEGORY_LABELS = {
-    "money": "💰 پول و ارز", "chart": "📊 سرمایه و نمودار", "gems": "🥇 طلا و جواهر",
-    "building": "🏢 ملک و ساختمان", "transport": "🚗 حمل و نقل", "goods": "📦 کالا",
-    "business": "💼 کسب و کار", "file": "📁 فایل و سند", "user": "👤 کاربر",
-    "system": "⚙️ تنظیمات", "media": "🎬 رسانه", "symbol": "🔷 نماد",
-    "time": "⏰ زمان", "nature": "🌿 طبیعت", "other": "📌 سایر",
+NAV_EMOJI = {
+    "overview": "📊", "journal": "➕", "assets": "🧾", "usd": "💵",
+    "gold": "🥇", "synthetic": "🔀", "monthly": "📅", "settings": "⚙️",
 }
+DEFAULT_NAV_ORDER = ["overview", "assets", "usd", "gold", "synthetic", "monthly"]
+PALETTE = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4"]
 
-def categorize_icon(icon_class, label):
-    text = f"{icon_class} {label}".lower()
-    cats = []
-    for cat, keywords in CATEGORY_KEYWORDS.items():
-        for kw in keywords:
-            if kw in text:
-                cats.append(cat)
-                break
-    return cats or ["other"]
-
-# ================== تنظیمات صفحه ==================
 st.set_page_config(page_title="داشبورد مالی", layout="wide", initial_sidebar_state="expanded")
+
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
-APP_PASSWORD = st.secrets.get("APP_PASSWORD") or "S@mnet11970"
-GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
-GITHUB_REPO = st.secrets.get("GITHUB_REPO", "")
+APP_PASSWORD = st.secrets.get("APP_PASSWORD", "S@mnet11970") if hasattr(st, "secrets") else "S@mnet11970"
+GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "") if hasattr(st, "secrets") else ""
+GITHUB_REPO = st.secrets.get("GITHUB_REPO", "") if hasattr(st, "secrets") else ""
 GITHUB_FILE_PATH = "data.json"
 GITHUB_BRANCH = "main"
+AUTH_TOKEN = hashlib.sha256((str(APP_PASSWORD) + "_salt_v2_2024").encode()).hexdigest()
 
-def get_auth_token():
-    return hashlib.sha256((APP_PASSWORD + "_salt_v2_2024").encode()).hexdigest()
 
-AUTH_TOKEN = get_auth_token()
-
-# ================== آیکون‌ها ==================
-@st.cache_data(ttl=86400, show_spinner=False)
-def load_fa_icons(cache_v="v7"):
-    try:
-        r = requests.get("https://raw.githubusercontent.com/FortAwesome/Font-Awesome/6.x/metadata/icons.json", timeout=15)
-        if r.status_code == 200:
-            meta = r.json()
-            icons = []
-            for name, info in meta.items():
-                if "solid" not in info.get("free", []):
-                    continue
-                label = info.get("label", name)
-                icons.append({"class": f"fa-{name}", "label": label,
-                              "categories": categorize_icon(f"fa-{name}", label)})
-            if icons:
-                return sorted(icons, key=lambda x: x["label"].lower())
-    except Exception:
-        pass
-    return [{"class": ic["class"], "label": ic["label"],
-             "categories": categorize_icon(ic["class"], ic["label"])} for ic in FALLBACK_ICONS]
-
-def icon_emoji(fa_class):
-    _EMOJI = {
-        "fa-folder": "📁", "fa-coins": "🪙", "fa-wallet": "👛", "fa-dollar-sign": "💲",
-        "fa-building-columns": "🏦", "fa-gem": "💎", "fa-crown": "👑", "fa-house": "🏠",
-        "fa-car": "🚗", "fa-chart-line": "📈", "fa-chart-pie": "📊", "fa-bitcoin-sign": "₿",
-        "fa-briefcase": "💼", "fa-store": "🏪", "fa-sack-dollar": "💰", "fa-fire": "🔥",
-        "fa-bolt": "⚡", "fa-box": "📦", "fa-gear": "⚙️", "fa-circle-plus": "➕",
-    }
-    return _EMOJI.get(fa_class, "📁")
-
-# ================== توابع تاریخ ==================
-def today_jalali_str():
+# ----------------------------- تاریخ و عدد -----------------------------
+def today_jalali_str() -> str:
     return jdatetime.date.today().strftime("%Y/%m/%d")
 
-def iso_to_jalali(iso_str, with_time=True):
-    if not iso_str: return "—"
+
+def iso_to_jalali(iso_str: str, with_time: bool = True) -> str:
+    if not iso_str:
+        return "—"
     try:
-        dt = datetime.fromisoformat(iso_str)
+        dt = datetime.fromisoformat(str(iso_str).replace("Z", "+00:00")).replace(tzinfo=None)
         j = jdatetime.datetime.fromgregorian(datetime=dt)
         return j.strftime("%Y/%m/%d - %H:%M") if with_time else j.strftime("%Y/%m/%d")
     except Exception:
         return "—"
 
-def parse_jalali(s):
+
+def parse_jalali(text: str):
     try:
-        s = s.strip().replace("-", "/").replace(".", "/")
-        parts = s.split("/")
-        if len(parts) != 3: return None
-        y, m, d = map(int, parts)
-        return jdatetime.date(y, m, d)
+        parts = str(text).strip().replace("-", "/").replace(".", "/").split("/")
+        if len(parts) != 3:
+            return None
+        year, month, day = map(int, parts)
+        return jdatetime.date(year, month, day)
     except Exception:
         return None
 
-def jalali_to_gregorian_iso(jdate, time_str="00:00"):
-    g = jdate.togregorian()
-    return f"{g.strftime('%Y-%m-%d')}T{time_str}:00"
 
-def fmt_num(x):
+def jalali_to_gregorian_iso(jdate, time_str: str = "00:00") -> str:
+    gregorian = jdate.togregorian()
+    return f"{gregorian.strftime('%Y-%m-%d')}T{time_str}:00"
+
+
+def fmt_num(value) -> str:
     try:
-        f = float(x)
-        return f"{int(f):,}" if f == int(f) else f"{f:,.2f}"
+        number = float(value)
+        return f"{int(number):,}" if number == int(number) else f"{number:,.2f}"
     except Exception:
-        return str(x)
+        return str(value)
 
-def _compact_json(obj):
-    return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
 
-def _decompress_if_needed(raw_bytes):
-    if len(raw_bytes) >= 2 and raw_bytes[:2] == b"\x1f\x8b":
-        try:
-            return gzip.decompress(raw_bytes)
-        except Exception:
-            pass
-    return raw_bytes
-
-def _short_id():
+def short_id() -> str:
     return str(int(datetime.now().timestamp() * 1000))
 
-# ================== احراز هویت ==================
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-if not st.session_state.authenticated:
-    qp_auth = st.query_params.get("auth")
-    if qp_auth and qp_auth == AUTH_TOKEN:
-        st.session_state.authenticated = True
 
-if not st.session_state.authenticated:
-    inject_login()
-    st.markdown("<div style='height: 6vh;'></div>", unsafe_allow_html=True)
-    _, col_c, _ = st.columns([1, 2, 1])
-    with col_c:
-        st.markdown("""
-        <div style="text-align:center; padding: 24px 0 16px 0; direction: rtl;">
-            <div style="font-size: 3.2rem; line-height: 1; margin-bottom: 8px;">🔐</div>
-            <h1 style="margin: 0; color: #1e40af;">داشبورد مالی</h1>
-            <p style="color: #6b7280; margin-top: 8px;">لطفاً رمز عبور را وارد کنید</p>
-        </div>
-        """, unsafe_allow_html=True)
-        with st.container(border=True):
-            with st.form("login_form"):
-                password = st.text_input("رمز", type="password", placeholder="••••••••", label_visibility="collapsed")
-                if st.form_submit_button("🚪 ورود", use_container_width=True):
-                    if password == APP_PASSWORD:
-                        st.session_state.authenticated = True
-                        st.query_params["auth"] = AUTH_TOKEN
-                        st.rerun()
-                    else:
-                        st.error("❌ رمز عبور اشتباه است.")
-    st.stop()
+# ----------------------------- ذخیره‌سازی -----------------------------
+def _compact_json(obj) -> str:
+    return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
 
-# ================== GitHub API ==================
-def github_headers():
-    return {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
 
-@st.cache_data(ttl=60, show_spinner=False)
-def check_github_status(token, repo):
-    if not token and not repo: return "no_config", "تنظیم نشده"
-    if not token: return "no_token", "توکن ندارد"
-    if not repo: return "no_repo", "مخزن ندارد"
-    try:
-        r = requests.get(f"https://api.github.com/repos/{repo}",
-                         headers={"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}, timeout=8)
-        if r.status_code == 200: return "ok", f"متصل به {repo}"
-        if r.status_code == 401: return "error", "توکن نامعتبر (401)"
-        if r.status_code == 404: return "error", "مخزن یافت نشد (404)"
-        return "error", f"HTTP {r.status_code}"
-    except Exception as e:
-        return "error", f"خطای شبکه: {str(e)[:40]}"
+def _decompress(raw: bytes) -> bytes:
+    if len(raw) >= 2 and raw[:2] == b"\x1f\x8b":
+        try:
+            return gzip.decompress(raw)
+        except Exception:
+            return raw
+    return raw
+
 
 def load_local_file():
     try:
         if os.path.exists(DATA_FILE):
-            with open(DATA_FILE, "rb") as f:
-                raw = f.read()
-            decompressed = _decompress_if_needed(raw)
-            return json.loads(decompressed.decode("utf-8"))
+            with open(DATA_FILE, "rb") as handle:
+                return json.loads(_decompress(handle.read()).decode("utf-8"))
     except Exception:
         pass
     return None
 
-def save_local_file(data):
+
+def save_local_file(data) -> bool:
     try:
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            f.write(_compact_json(data))
+        with open(DATA_FILE, "w", encoding="utf-8") as handle:
+            handle.write(_compact_json(data))
         return True
     except Exception:
         return False
 
+
+def github_headers() -> dict:
+    return {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+
+
 def load_github_file():
-    if not GITHUB_TOKEN or not GITHUB_REPO: return None
-    api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}?ref={GITHUB_BRANCH}"
+    if not GITHUB_TOKEN or not GITHUB_REPO:
+        return None
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}?ref={GITHUB_BRANCH}"
     try:
-        r = requests.get(api_url, headers=github_headers(), timeout=20)
-        if r.status_code != 200: return None
-        info = r.json()
-        content_b64 = info.get("content", "")
-        if not content_b64:
-            raw_url = info.get("download_url") or f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/{GITHUB_FILE_PATH}"
-            raw_resp = requests.get(raw_url, timeout=30)
-            if raw_resp.status_code != 200: return None
-            content_bytes = raw_resp.content
+        response = requests.get(url, headers=github_headers(), timeout=20)
+        if response.status_code != 200:
+            return None
+        info = response.json()
+        content = info.get("content", "")
+        if content:
+            raw = base64.b64decode(content)
         else:
-            content_bytes = base64.b64decode(content_b64)
-        decompressed = _decompress_if_needed(content_bytes)
-        return json.loads(decompressed.decode("utf-8"))
+            download = info.get("download_url") or f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/{GITHUB_FILE_PATH}"
+            fallback = requests.get(download, timeout=30)
+            if fallback.status_code != 200:
+                return None
+            raw = fallback.content
+        return json.loads(_decompress(raw).decode("utf-8"))
     except Exception:
         return None
 
+
 def save_github_file(data):
-    if not GITHUB_TOKEN or not GITHUB_REPO: return False, "GitHub تنظیم نشده"
+    if not GITHUB_TOKEN or not GITHUB_REPO:
+        return False, "GitHub تنظیم نشده"
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
     sha = None
     try:
-        r = requests.get(url, headers=github_headers(), timeout=15)
-        if r.status_code == 200: sha = r.json()["sha"]
-        elif r.status_code == 401: return False, "توکن نامعتبر (401)"
-    except Exception as e:
-        return False, f"خطای شبکه: {str(e)[:50]}"
-    raw = _compact_json(data).encode("utf-8")
-    compressed = gzip.compress(raw, mtime=0)
-    encoded = base64.b64encode(compressed).decode()
+        response = requests.get(url, headers=github_headers(), timeout=15)
+        if response.status_code == 200:
+            sha = response.json().get("sha")
+    except Exception as exc:
+        return False, f"خطای شبکه: {str(exc)[:50]}"
     payload = {
-        "message": f"update {today_jalali_str()} {datetime.now().strftime('%H:%M')} ({len(compressed):,}B gz)",
-        "content": encoded, "branch": GITHUB_BRANCH,
+        "message": f"update {today_jalali_str()} {datetime.now().strftime('%H:%M')}",
+        "content": base64.b64encode(_compact_json(data).encode("utf-8")).decode(),
+        "branch": GITHUB_BRANCH,
     }
-    if sha: payload["sha"] = sha
+    if sha:
+        payload["sha"] = sha
     try:
-        r = requests.put(url, headers=github_headers(), json=payload, timeout=30)
-        if r.status_code in (200, 201): return True, ""
-        if r.status_code == 401: return False, "توکن نامعتبر (401)"
-        if r.status_code == 403: return False, "دسترسی write ندارد (403)"
-        if r.status_code == 404: return False, "مخزن یافت نشد (404)"
-        if r.status_code == 409: return False, "تضاد SHA (409)"
-        return False, f"HTTP {r.status_code}"
-    except Exception as e:
-        return False, f"خطای شبکه: {str(e)[:50]}"
+        response = requests.put(url, headers=github_headers(), json=payload, timeout=30)
+        if response.status_code in (200, 201):
+            return True, ""
+        return False, f"HTTP {response.status_code}"
+    except Exception as exc:
+        return False, f"خطای شبکه: {str(exc)[:50]}"
 
-def verify_github_save(expected_data):
-    if not GITHUB_TOKEN or not GITHUB_REPO: return False, "GitHub تنظیم نشده", None
-    api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}?ref={GITHUB_BRANCH}"
-    try:
-        r = requests.get(api_url, headers=github_headers(), timeout=20)
-        if r.status_code != 200: return False, f"HTTP {r.status_code}", None
-        info = r.json()
-        sha = info.get("sha", "")[:8]
-        size_bytes = info.get("size", 0)
-        content_b64 = info.get("content", "")
-        if not content_b64:
-            raw_url = info.get("download_url") or f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/{GITHUB_FILE_PATH}"
-            raw_resp = requests.get(raw_url, timeout=30)
-            if raw_resp.status_code != 200: return False, "خواندن ناموفق", sha
-            content_bytes = raw_resp.content
-        else:
-            content_bytes = base64.b64decode(content_b64)
-        decompressed = _decompress_if_needed(content_bytes)
-        gh_data = json.loads(decompressed.decode("utf-8"))
-        if gh_data.get("last_saved") != expected_data.get("last_saved"):
-            return False, "timestamp متفاوت", sha
-        kind = "gzip" if content_bytes[:2] == b"\x1f\x8b" else "plain"
-        return True, f"تأیید شد — {size_bytes:,}B ({kind})", sha
-    except Exception as e:
-        return False, str(e)[:50], None
 
-# ================== مهاجرت ==================
-def migrate_data(data):
+# ----------------------------- مهاجرت و بارگذاری -----------------------------
+def default_settings() -> dict:
+    return {
+        "font": "vazirmatn",
+        "nav_icons": DEFAULT_NAV_ICONS.copy(),
+        "custom_fonts": {},
+        "dark_mode": False,
+        "auto_theme": True,
+        "day_start": "07:00",
+        "night_start": "19:00",
+        "nav_order": DEFAULT_NAV_ORDER.copy(),
+    }
+
+
+def migrate_data(data) -> dict:
     if not isinstance(data, dict) or not data:
-        return {"assets": [], "usd_rates": [], "gold_funds": [], "settings": {
-            "font": "vazirmatn", "nav_icons": DEFAULT_NAV_ICONS.copy(),
-            "custom_fonts": {}, "dark_mode": False}}
-    if "usd_rates" not in data or not isinstance(data.get("usd_rates"), list):
-        old = data.get("usd_rate")
-        data["usd_rates"] = []
-        if old:
-            data["usd_rates"].append({"id": _short_id(), "rate": old, "note": "منتقل‌شده",
-                                     "created_at": datetime.now().isoformat(),
-                                     "created_at_jalali": today_jalali_str()})
+        return {"assets": [], "usd_rates": [], "gold_funds": [], "synthetic_pairs": [], "settings": default_settings()}
+    data.setdefault("assets", [])
+    data.setdefault("usd_rates", [])
+    data.setdefault("gold_funds", [])
+    data.setdefault("synthetic_pairs", [])
+    settings = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+    merged = default_settings()
+    merged.update(settings)
+    icons = merged.get("nav_icons") if isinstance(merged.get("nav_icons"), dict) else {}
+    for key, value in DEFAULT_NAV_ICONS.items():
+        icons.setdefault(key, value.copy())
+    merged["nav_icons"] = icons
+    order = [item for item in (merged.get("nav_order") or []) if item in DEFAULT_NAV_ORDER]
+    for item in DEFAULT_NAV_ORDER:
+        if item not in order:
+            order.append(item)
+    merged["nav_order"] = order
+    data["settings"] = merged
+
+    # مهاجرت از ساختار قدیمی journals و usd_rate
+    if isinstance(data.get("usd_rate"), (int, float)) and data["usd_rate"]:
+        data["usd_rates"].append({
+            "id": short_id(), "rate": data["usd_rate"], "note": "منتقل‌شده",
+            "created_at": datetime.now().isoformat(), "created_at_jalali": today_jalali_str(),
+        })
         data.pop("usd_rate", None)
-    if "journals" in data and isinstance(data.get("journals"), list):
-        if "assets" not in data or not isinstance(data.get("assets"), list): data["assets"] = []
-        for j in data.get("journals", []):
-            aid = j.get("id") or _short_id()
-            ciso = j.get("created_at_gregorian") or j.get("created_at") or datetime.now().isoformat()
-            cjal = j.get("created_at_jalali") or iso_to_jalali(ciso, with_time=False)
+    if isinstance(data.get("journals"), list):
+        for journal in data["journals"]:
+            asset_id = journal.get("id") or short_id()
+            created = journal.get("created_at") or datetime.now().isoformat()
             data["assets"].append({
-                "id": aid, "name": j.get("asset_name", "بدون نام"), "icon": "fa-folder",
-                "color": "#3b82f6", "overview_emoji": "", "currency": j.get("currency", "IRR"),
-                "created_at_gregorian": ciso, "created_at_jalali": cjal,
-                "records": [{"id": aid + "_r", "date_gregorian": ciso, "date_jalali": cjal,
-                            "quantity": j.get("amount", 0), "unit_price": 1, "note": "منتقل‌شده"}]})
+                "id": asset_id, "name": journal.get("asset_name", "بدون نام"),
+                "icon": "fa-folder", "color": "#3b82f6", "overview_emoji": "",
+                "currency": journal.get("currency", "IRR"),
+                "created_at_gregorian": created,
+                "created_at_jalali": iso_to_jalali(created, with_time=False),
+                "records": [{
+                    "id": asset_id + "_r", "date_gregorian": created,
+                    "date_jalali": iso_to_jalali(created, with_time=False),
+                    "quantity": journal.get("amount", 0), "unit_price": 1, "note": "منتقل‌شده",
+                }],
+            })
         data.pop("journals", None)
-    if "assets" not in data or not isinstance(data.get("assets"), list): data["assets"] = []
-    if "usd_rates" not in data or not isinstance(data.get("usd_rates"), list): data["usd_rates"] = []
-    if "gold_funds" not in data or not isinstance(data.get("gold_funds"), list): data["gold_funds"] = []
-    if "settings" not in data or not isinstance(data.get("settings"), dict):
-        data["settings"] = {"font": "vazirmatn", "nav_icons": DEFAULT_NAV_ICONS.copy(),
-                            "custom_fonts": {}, "dark_mode": False}
-    data["settings"].setdefault("font", "vazirmatn")
-    data["settings"].setdefault("dark_mode", False)
-    if "nav_icons" not in data["settings"]: data["settings"]["nav_icons"] = DEFAULT_NAV_ICONS.copy()
-    for k, v in DEFAULT_NAV_ICONS.items(): data["settings"]["nav_icons"].setdefault(k, v.copy())
-    if "custom_fonts" not in data["settings"]: data["settings"]["custom_fonts"] = {}
-    seen = set(); unique = []
-    for a in data["assets"]:
-        if a.get("id") and a["id"] not in seen:
-            seen.add(a["id"]); unique.append(a)
-    data["assets"] = unique
-    for a in data["assets"]:
-        if not isinstance(a.get("icon"), str) or not a["icon"].startswith("fa-"): a["icon"] = "fa-folder"
-        a.setdefault("color", "#3b82f6"); a.setdefault("overview_emoji", "")
-    seen_g = set(); unique_g = []
-    for gf in data["gold_funds"]:
-        if gf.get("id") and gf["id"] not in seen_g:
-            seen_g.add(gf["id"]); unique_g.append(gf)
-    data["gold_funds"] = unique_g
+
+    seen = set()
+    assets = []
+    for asset in data["assets"]:
+        if asset.get("id") and asset["id"] not in seen:
+            seen.add(asset["id"])
+            asset.setdefault("currency", "IRR")
+            asset.setdefault("color", "#3b82f6")
+            asset.setdefault("icon", "fa-folder")
+            asset.setdefault("records", [])
+            assets.append(asset)
+    data["assets"] = assets
+
+    seen_gold = set()
+    funds = []
+    for fund in data["gold_funds"]:
+        if fund.get("id") and fund["id"] not in seen_gold:
+            seen_gold.add(fund["id"])
+            fund.setdefault("records", [])
+            fund.setdefault("icon", "🥇")
+            funds.append(fund)
+    data["gold_funds"] = funds
     return data
 
-def load_all():
-    local = load_local_file()
-    gh = load_github_file()
-    l_has = local and (local.get("assets") or local.get("usd_rates") or local.get("gold_funds"))
-    g_has = gh and (gh.get("assets") or gh.get("usd_rates") or gh.get("gold_funds"))
-    if l_has and g_has:
-        l_saved = local.get("last_saved", ""); g_saved = gh.get("last_saved", "")
-        chosen = (local if l_saved > g_saved else gh) if (l_saved and g_saved) else gh
-        save_local_file(chosen); return migrate_data(chosen)
-    if g_has: save_local_file(gh); return migrate_data(gh)
-    if l_has: return migrate_data(local)
-    return migrate_data({})
 
-def save_all(data, verify=True):
-    data["last_saved"] = datetime.now().isoformat()
-    data["last_saved_jalali"] = jdatetime.datetime.fromgregorian(datetime=datetime.now()).strftime("%Y/%m/%d - %H:%M")
+def save_all(data) -> bool:
+    now = datetime.now()
+    data["last_saved"] = now.isoformat()
+    data["last_saved_jalali"] = jdatetime.datetime.fromgregorian(datetime=now).strftime("%Y/%m/%d - %H:%M")
     local_ok = save_local_file(data)
-    gh_ok, gh_err = save_github_file(data)
-    if gh_ok:
-        if verify:
-            v_ok, v_msg, _ = verify_github_save(data)
-            if v_ok: st.toast("✅ ذخیره و تأیید شد", icon="✅"); return True
-            st.warning(f"⚠️ ذخیره شد ولی تأیید ناقص: {v_msg}"); return False
-        st.toast("✅ ذخیره شد"); return True
-    else:
-        if local_ok:
-            st.error(f"❌ **ذخیره GitHub ناموفق!** {gh_err}")
-            st.warning("⚠️ فقط در حافظه موقت — با ری‌استارت از دست می‌رود!")
-        else:
-            st.error(f"❌ **هیچ جا ذخیره نشد!** {gh_err}")
-        return False
+    github_ok, github_error = save_github_file(data)
+    if github_ok:
+        st.toast("✅ در GitHub و حافظهٔ محلی ذخیره شد", icon="✅")
+        return True
+    if local_ok:
+        st.warning(f"⚠️ فقط محلی ذخیره شد — GitHub: {github_error}")
+        return True
+    st.error(f"❌ ذخیره‌سازی ناموفق: {github_error}")
+    return False
 
-# ================== توابع کمکی ==================
-def get_settings(data):
-    s = data.get("settings") or {}
-    return {"font": s.get("font", "vazirmatn"),
-            "nav_icons": s.get("nav_icons", DEFAULT_NAV_ICONS),
-            "custom_fonts": s.get("custom_fonts", {}) or {},
-            "dark_mode": bool(s.get("dark_mode", False))}
 
-def get_all_fonts(data):
-    fonts = {}
-    for k, (name, url) in FONTS.items(): fonts[k] = {"name": name, "family": name, "builtin": True}
-    custom = (data.get("settings") or {}).get("custom_fonts", {}) or {}
-    for k, info in custom.items(): fonts[k] = {"name": info.get("display_name", k), "family": k, "builtin": False}
-    return fonts
+def refresh(data) -> None:
+    st.session_state.data = data
+    st.rerun()
 
-def asset_icon(asset):
-    ic = asset.get("icon", "fa-folder")
-    return ic if isinstance(ic, str) and ic.startswith("fa-") else "fa-folder"
 
-def asset_color(asset): return asset.get("color", "#3b82f6")
-
-def asset_overview_emoji(asset):
-    custom = (asset.get("overview_emoji") or "").strip()
-    return custom if custom else icon_emoji(asset_icon(asset))
-
-def get_current_usd_rate(data):
-    rates = data.get("usd_rates", [])
-    if not rates: return None, None
-    latest = max(rates, key=lambda x: x.get("created_at", ""))
-    return latest["rate"], latest.get("created_at_jalali", "—")
-
-def latest_record(asset):
-    records = asset.get("records", [])
-    if not records: return None
-    return max(records, key=lambda r: (r.get("date_gregorian", ""), r.get("id", "")))
-
-def compute_asset_value(asset, usd_rate):
-    rec = latest_record(asset)
-    if not rec: return 0, None, None
-    value = rec["quantity"] * rec["unit_price"]
-    if asset["currency"] == "IRR":
-        usd = (value / usd_rate) if (usd_rate and usd_rate > 0) else None
-    else:
-        usd = value
-    return value, usd, rec
-
-def currency_label(cur): return "ریال" if cur == "IRR" else "دلار"
-
-def get_version(key):
-    if key not in st.session_state: st.session_state[key] = 0
-    return st.session_state[key]
-
-def bump_version(key): st.session_state[key] = st.session_state.get(key, 0) + 1
-
-def sync_usd_rates_to_gold_funds(data):
-    rates = sorted(data.get("usd_rates", []), key=lambda x: x.get("created_at", ""))
-    updated = 0; missing = 0
-    for gf in data.get("gold_funds", []):
-        for rec in gf.get("records", []):
-            rec_date = rec.get("date_gregorian", "")[:10]
-            if not rec_date: continue
-            rate_at = None
-            for ur in rates:
-                if ur.get("created_at", "")[:10] <= rec_date: rate_at = ur["rate"]
-                else: break
-            if rate_at is not None:
-                if rec.get("usd_rate_used") != rate_at:
-                    rec["usd_rate_used"] = rate_at; updated += 1
-            else: missing += 1
-    return updated, missing
-
-def build_portfolio_timeline(data):
-    assets = data.get("assets", [])
-    usd_rates = sorted(data.get("usd_rates", []), key=lambda x: x.get("created_at", ""))
-    all_dates = set()
-    for a in assets:
-        for r in a.get("records", []):
-            if r.get("date_gregorian"): all_dates.add(r["date_gregorian"][:10])
-    for r in usd_rates:
-        if r.get("created_at"): all_dates.add(r["created_at"][:10])
-    if not all_dates: return pd.DataFrame()
-    rows = []
-    for d in sorted(all_dates):
-        rate_at = None
-        for ur in usd_rates:
-            if ur.get("created_at", "")[:10] <= d: rate_at = ur["rate"]
-            else: break
-        t_irr = 0.0; t_usd = 0.0
-        for a in assets:
-            recs = [r for r in a.get("records", []) if r.get("date_gregorian", "")[:10] <= d]
-            if not recs: continue
-            latest = max(recs, key=lambda r: r.get("date_gregorian", ""))
-            val = latest["quantity"] * latest["unit_price"]
-            if a["currency"] == "IRR":
-                t_irr += val
-                if rate_at and rate_at > 0: t_usd += val / rate_at
-            else:
-                t_usd += val
-                if rate_at and rate_at > 0: t_irr += val * rate_at
-        try:
-            dt = datetime.fromisoformat(d + "T00:00:00")
-            jd = jdatetime.datetime.fromgregorian(datetime=dt).strftime("%Y/%m/%d")
-        except Exception: jd = d
-        rows.append({"date_gregorian": d, "date_jalali": jd, "total_irr": t_irr, "total_usd": t_usd})
-    return pd.DataFrame(rows)
-
-def render_html_table(df, dark=False):
-    bg_head = "#161b22" if dark else "#f3f4f6"
-    bg_odd = "#0d1117" if dark else "#f9fafb"
-    bg_even = "#161b22" if dark else "#ffffff"
-    border = "#30363d" if dark else "#e5e7eb"
-    text_col = "#e6edf3" if dark else "#1f2937"
-    html = (f'<div style="overflow-x:auto; margin:8px 0;">'
-            f'<table style="width:100%; border-collapse:collapse; direction:rtl; '
-            f'font-family:inherit; font-size:0.9rem; color:{text_col};">')
-    html += f'<thead><tr style="background:{bg_head}; font-weight:bold;">'
-    for col in df.columns:
-        html += f'<th style="padding:10px 12px; text-align:right; border-bottom:2px solid {border}; white-space:nowrap;">{col}</th>'
-    html += '</tr></thead><tbody>'
-    for idx, row in df.iterrows():
-        bg = bg_odd if idx % 2 == 0 else bg_even
-        html += f'<tr style="background:{bg};">'
-        for val in row:
-            html += f'<td style="padding:8px 12px; text-align:right; border-bottom:1px solid {border};">{val}</td>'
-        html += '</tr>'
-    html += '</tbody></table></div>'
-    st.markdown(html, unsafe_allow_html=True)
-
-# ================== تحلیل صندوق طلا ==================
-def unit_usd_equivalent(record):
-    rate = record.get("usd_rate_used", 0)
-    if rate <= 0: return None
-    return record["unit_price"] / rate
-
-def gold_gram_per_unit(record):
-    if record.get("ounce_price_usd", 0) <= 0 or record.get("usd_rate_used", 0) <= 0 or record.get("unit_price", 0) <= 0:
+# ----------------------------- توابع کمکی داده -----------------------------
+def latest_record(records):
+    if not records:
         return None
-    return (record["unit_price"] * 31.1035) / (record["ounce_price_usd"] * record["usd_rate_used"])
+    return max(records, key=lambda item: item.get("date_gregorian", ""))
 
-def gold_fund_analytics(fund):
-    records = sorted(fund.get("records", []), key=lambda r: r.get("date_gregorian", ""))
-    if not records: return []
+
+def current_rate(data):
+    rates = data.get("usd_rates", [])
+    if not rates:
+        return None, None
+    latest = max(rates, key=lambda item: item.get("created_at", ""))
+    return float(latest["rate"]), latest.get("created_at_jalali", "—")
+
+
+def rate_at(data, date_str: str):
+    rate = None
+    for item in sorted(data.get("usd_rates", []), key=lambda row: row.get("created_at", "")):
+        if item.get("created_at", "")[:10] <= date_str:
+            try:
+                value = float(item.get("rate", 0) or 0)
+                if value > 0:
+                    rate = value
+            except (TypeError, ValueError):
+                continue
+        else:
+            break
+    return rate
+
+
+def asset_value(asset, rate):
+    record = latest_record(asset.get("records", []))
+    if not record:
+        return 0.0, None
+    unit = float(record.get("unit_price", 0) or 0)
+    quantity = float(record.get("quantity", 0) or 0)
+    if asset.get("currency", "IRR") == "USD":
+        return unit * quantity, (unit * quantity) if not rate else unit * quantity
+    return unit * quantity, (unit * quantity / rate) if rate else None
+
+
+def currency_label(currency: str) -> str:
+    return "دلار" if currency == "USD" else "ریال"
+
+
+def get_instruments(data) -> list[dict]:
+    instruments = []
+    for asset in data.get("assets", []):
+        records = [row for row in asset.get("records", []) if float(row.get("unit_price", 0) or 0) > 0]
+        if not records:
+            continue
+        instruments.append({
+            "id": f"asset:{asset['id']}", "label": asset.get("name", "بدون نام"),
+            "kind": "asset", "color": asset.get("color", "#3b82f6"), "records": records,
+            "currency": asset.get("currency", "IRR"),
+        })
+    for fund in data.get("gold_funds", []):
+        records = [row for row in fund.get("records", []) if float(row.get("unit_price", 0) or 0) > 0]
+        if not records:
+            continue
+        instruments.append({
+            "id": f"gold:{fund['id']}", "label": f"{fund.get('icon', '🥇')} {fund['name']}",
+            "kind": "gold", "color": "#eab308", "records": records, "currency": "IRR",
+        })
+    if data.get("usd_rates"):
+        instruments.append({
+            "id": "usd", "label": "دلار آزاد", "kind": "usd", "color": "#f59e0b",
+            "records": data["usd_rates"], "currency": "IRR",
+        })
+    return instruments
+
+
+def price_history(data, instrument_id: str) -> list[tuple[str, float]]:
+    kind, _, raw_id = instrument_id.partition(":")
+    rows: list[tuple[str, float]] = []
+    if instrument_id == "usd":
+        for item in data.get("usd_rates", []):
+            rate = float(item.get("rate", 0) or 0)
+            if rate > 0:
+                rows.append((item.get("created_at", "")[:10], rate))
+    elif kind == "gold":
+        fund = next((item for item in data.get("gold_funds", []) if item["id"] == raw_id), None)
+        for record in (fund or {}).get("records", []):
+            price = float(record.get("unit_price", 0) or 0)
+            if price > 0:
+                rows.append((record.get("date_gregorian", "")[:10], price))
+    else:
+        asset = next((item for item in data.get("assets", []) if item["id"] == raw_id), None)
+        for record in (asset or {}).get("records", []):
+            unit = float(record.get("unit_price", 0) or 0)
+            if unit <= 0:
+                continue
+            rate = rate_at(data, record.get("date_gregorian", "")[:10])
+            price = unit if (asset or {}).get("currency", "IRR") != "USD" else unit * (rate or 0)
+            if price > 0:
+                rows.append((record.get("date_gregorian", "")[:10], price))
+    return sorted(rows, key=lambda item: item[0])
+
+
+def _price_on(history: list[tuple[str, float]], date_str: str):
+    value = None
+    for date, price in history:
+        if date <= date_str:
+            value = price
+        else:
+            break
+    return value
+
+
+def build_pair_series(data, left_id: str, right_id: str) -> pd.DataFrame:
+    left = price_history(data, left_id)
+    right = price_history(data, right_id)
+    dates = sorted({date for date, _ in left} | {date for date, _ in right})
+    rows = []
+    for date in dates:
+        left_price = _price_on(left, date)
+        right_price = _price_on(right, date)
+        if not left_price or not right_price or left_price <= 0 or right_price <= 0:
+            continue
+        rows.append({"date": date, "left": left_price, "right": right_price, "ratio": left_price / right_price})
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        return frame
+    base = frame.iloc[0]
+    frame["left_index"] = frame["left"] / base["left"] * 100
+    frame["right_index"] = frame["right"] / base["right"] * 100
+    frame["ratio_index"] = frame["ratio"] / base["ratio"] * 100
+    frame["label"] = frame["date"].map(lambda value: iso_to_jalali(value + "T00:00:00", with_time=False))
+    return frame
+
+
+def chart_layout(fig, dark: bool, height: int = 360):
+    fig.update_layout(
+        height=height,
+        font={"family": "Vazirmatn, Tahoma", "size": 12, "color": "#e6edf3" if dark else "#1f2937"},
+        paper_bgcolor="rgba(0,0,0,0)" if dark else "white",
+        plot_bgcolor="rgba(0,0,0,0)" if dark else "white",
+        legend={"orientation": "h", "yanchor": "bottom", "y": -0.25, "xanchor": "center", "x": 0.5},
+        margin={"t": 30, "b": 20, "l": 8, "r": 8},
+        hovermode="x unified",
+    )
+    return fig
+
+
+def render_table(frame: pd.DataFrame) -> None:
+    st.markdown(frame.to_html(index=False, escape=False, classes="fin-table"), unsafe_allow_html=True)
+
+
+# ----------------------------- تحلیل دارایی -----------------------------
+def asset_analysis(data, asset) -> pd.DataFrame:
+    rows = []
+    for record in sorted(asset.get("records", []), key=lambda item: item.get("date_gregorian", "")):
+        date_str = record.get("date_gregorian", "")[:10]
+        rate = rate_at(data, date_str)
+        unit = float(record.get("unit_price", 0) or 0)
+        quantity = float(record.get("quantity", 0) or 0)
+        if unit <= 0 or not rate:
+            continue
+        unit_irr = unit if asset.get("currency", "IRR") != "USD" else unit * rate
+        unit_usd = unit if asset.get("currency", "IRR") == "USD" else unit / rate
+        rows.append({
+            "id": record.get("id"), "date": date_str, "label": iso_to_jalali(date_str + "T00:00:00", False),
+            "quantity": quantity, "unit": unit, "unit_irr": unit_irr, "unit_usd": unit_usd,
+            "rate": rate, "value_irr": unit_irr * quantity, "usd_return": 0.0,
+            "irr_index": 100.0, "usd_index": 100.0, "rate_index": 100.0,
+        })
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        return frame
+    frame["irr_index"] = frame["unit_irr"] / frame["unit_irr"].iloc[0] * 100
+    frame["usd_index"] = frame["unit_usd"] / frame["unit_usd"].iloc[0] * 100
+    frame["rate_index"] = frame["rate"] / frame["rate"].iloc[0] * 100
+    frame["usd_return"] = frame["usd_index"] - 100
+    return frame
+
+
+def render_asset_detail(data, asset, dark: bool) -> None:
+    rate, _ = current_rate(data)
+    frame = asset_analysis(data, asset)
+    st.markdown(f'<h2>{asset.get("name", "")}</h2>', unsafe_allow_html=True)
+    st.caption(f"ارز: **{currency_label(asset.get('currency', 'IRR'))}** | ایجاد: {asset.get('created_at_jalali', '—')}")
+
+    with st.expander("⚙️ ویرایش نام، ارز و رنگ"):
+        with st.form(f"edit_asset_{asset['id']}"):
+            c1, c2, c3 = st.columns([3, 2, 2])
+            new_name = c1.text_input("نام", value=asset.get("name", ""))
+            new_currency = c2.selectbox("ارز", ["IRR", "USD"], index=0 if asset.get("currency", "IRR") == "IRR" else 1,
+                                        format_func=lambda value: "ریال" if value == "IRR" else "دلار")
+            new_color = c3.color_picker("رنگ", value=asset.get("color", "#3b82f6"))
+            if st.form_submit_button("💾 ذخیره", use_container_width=True):
+                if new_name.strip():
+                    asset["name"] = new_name.strip()
+                    asset["currency"] = new_currency
+                    asset["color"] = new_color
+                    save_all(data)
+                    st.rerun()
+
+    latest = latest_record(asset.get("records", []))
+    value, usd_value = asset_value(asset, rate)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("📦 تعداد", fmt_num(latest.get("quantity", 0)) if latest else "—")
+    c2.metric("💲 قیمت هر واحد", f"{fmt_num(latest.get('unit_price', 0))} {currency_label(asset.get('currency', 'IRR'))}" if latest else "—")
+    c3.metric("💰 ارزش کل", f"{fmt_num(value)} {currency_label(asset.get('currency', 'IRR'))}" if latest else "—")
+    c4.metric("💵 ارزش دلاری", f"${usd_value:,.2f}" if usd_value is not None else "—")
+
+    with st.container(border=True):
+        st.subheader("➕ ثبت رکورد روزانه")
+        with st.form(f"add_record_{asset['id']}", clear_on_submit=True):
+            c1, c2, c3, c4 = st.columns([2, 2, 2, 3])
+            date_text = c1.text_input("تاریخ (شمسی)", value=today_jalali_str())
+            quantity = c2.number_input("تعداد", min_value=0.0, format="%.4f", step=1.0)
+            price = c3.number_input(f"قیمت هر واحد ({currency_label(asset.get('currency', 'IRR'))})", min_value=0.0, format="%.2f", step=1000.0)
+            note = c4.text_input("توضیح")
+            if st.form_submit_button("💾 ثبت", use_container_width=True):
+                jdate = parse_jalali(date_text)
+                if jdate and quantity > 0 and price > 0:
+                    asset.setdefault("records", []).append({
+                        "id": short_id(), "date_gregorian": jalali_to_gregorian_iso(jdate, datetime.now().strftime("%H:%M")),
+                        "date_jalali": jdate.strftime("%Y/%m/%d"), "quantity": quantity,
+                        "unit_price": price, "note": note.strip(),
+                    })
+                    save_all(data)
+                    st.rerun()
+                else:
+                    st.error("مقادیر معتبر وارد کنید.")
+
+    records = sorted(asset.get("records", []), key=lambda item: item.get("date_gregorian", ""))
+    if len(records) >= 2:
+        st.subheader("📈 روند ارزش کل")
+        st.caption("⚠️ ارزش کل = تعداد × قیمت؛ با خرید و فروش تغییر می‌کند.")
+        chart = pd.DataFrame([{
+            "تاریخ": row.get("date_jalali"),
+            "ارزش": float(row.get("quantity", 0)) * float(row.get("unit_price", 0)),
+        } for row in records])
+        fig = px.line(chart, x="تاریخ", y="ارزش", markers=True)
+        fig.update_traces(line={"width": 3}, marker={"size": 7})
+        st.plotly_chart(chart_layout(fig, dark), use_container_width=True)
+
+    if len(frame) >= 2:
+        st.subheader("📈 مقایسهٔ قیمت هر واحد (پایه = ۱۰۰)")
+        st.caption("🔵 قیمت واحد به ریال | 🟢 قیمت واحد به دلار | 🟠 نرخ دلار — مستقل از تعداد")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=frame["label"], y=frame["irr_index"], mode="lines+markers", name="قیمت واحد (ریال)", line={"color": "#3b82f6", "width": 3}))
+        fig.add_trace(go.Scatter(x=frame["label"], y=frame["usd_index"], mode="lines+markers", name="قیمت واحد (دلار)", line={"color": "#10b981", "width": 3}))
+        fig.add_trace(go.Scatter(x=frame["label"], y=frame["rate_index"], mode="lines+markers", name="نرخ دلار", line={"color": "#f59e0b", "width": 2, "dash": "dot"}))
+        st.plotly_chart(chart_layout(fig, dark), use_container_width=True)
+        last = frame.iloc[-1]
+        irr_change = last["irr_index"] - 100
+        usd_change = last["usd_index"] - 100
+        rate_change = last["rate_index"] - 100
+        if irr_change > 5 and usd_change < -5:
+            st.error(f"🔴 تله دلار: ریالی {irr_change:+.1f}٪ رشد ولی دلاری {usd_change:+.1f}٪ افت (نرخ دلار {rate_change:+.1f}٪).")
+        elif usd_change > 5:
+            st.success(f"🟢 سود دلاری واقعی: قیمت واحد به دلار {usd_change:+.1f}٪ رشد (نرخ دلار {rate_change:+.1f}٪).")
+        elif usd_change < -5:
+            st.warning(f"🟡 ضرر دلاری: قیمت واحد به دلار {usd_change:+.1f}٪ افت (نرخ دلار {rate_change:+.1f}٪).")
+        else:
+            st.info(f"⚪ قیمت واحد به دلار {usd_change:+.1f}٪ — تعادل نسبی.")
+
+    st.subheader("📋 تاریخچه رکوردها")
+    for record in reversed(records):
+        date_str = record.get("date_gregorian", "")[:10]
+        rate_used = rate_at(data, date_str)
+        unit = float(record.get("unit_price", 0) or 0)
+        unit_irr = unit if asset.get("currency", "IRR") != "USD" else unit * (rate_used or 0)
+        unit_usd = unit if asset.get("currency", "IRR") == "USD" else (unit / rate_used if rate_used else 0)
+        with st.expander(f"📅 {record.get('date_jalali', '—')} — {fmt_num(record.get('quantity', 0))} واحد × {fmt_num(unit)}"):
+            cols = st.columns(4)
+            cols[0].caption(f"ریال: **{fmt_num(unit_irr)}**")
+            cols[1].caption(f"دلار: **${unit_usd:,.4f}**")
+            cols[2].caption(f"نرخ دلار: **{fmt_num(rate_used or 0)}**")
+            cols[3].caption(f"یادداشت: {record.get('note') or '—'}")
+            with st.form(f"edit_record_{asset['id']}_{record['id']}"):
+                c1, c2, c3 = st.columns([2, 2, 2])
+                edit_date = c1.text_input("تاریخ", value=record.get("date_jalali", today_jalali_str()))
+                edit_quantity = c2.number_input("تعداد", value=float(record.get("quantity", 0) or 0), min_value=0.0, format="%.4f")
+                edit_price = c3.number_input("قیمت هر واحد", value=float(unit), min_value=0.0, format="%.2f")
+                edit_note = st.text_input("توضیح", value=record.get("note", ""))
+                save_col, delete_col = st.columns(2)
+                if save_col.form_submit_button("💾 ذخیره", use_container_width=True):
+                    jdate = parse_jalali(edit_date)
+                    if jdate and edit_quantity > 0 and edit_price > 0:
+                        record.update({
+                            "date_gregorian": jalali_to_gregorian_iso(jdate, datetime.now().strftime("%H:%M")),
+                            "date_jalali": jdate.strftime("%Y/%m/%d"), "quantity": edit_quantity,
+                            "unit_price": edit_price, "note": edit_note.strip(),
+                        })
+                        save_all(data)
+                        st.rerun()
+                if delete_col.form_submit_button("🗑️ حذف رکورد", use_container_width=True):
+                    asset["records"] = [item for item in asset.get("records", []) if item.get("id") != record.get("id")]
+                    save_all(data)
+                    st.rerun()
+
+    with st.expander("⚠️ حذف کل دارایی"):
+        confirm = st.checkbox("مطمئنم", key=f"confirm_asset_{asset['id']}")
+        if st.button("🗑️ حذف دارایی", disabled=not confirm, key=f"delete_asset_{asset['id']}", use_container_width=True):
+            data["assets"] = [item for item in data["assets"] if item.get("id") != asset.get("id")]
+            data["synthetic_pairs"] = [
+                pair for pair in data.get("synthetic_pairs", [])
+                if pair.get("left") != f"asset:{asset['id']}" and pair.get("right") != f"asset:{asset['id']}"
+            ]
+            st.session_state.pending_nav = "assets"
+            save_all(data)
+            st.rerun()
+
+
+# ----------------------------- تحلیل صندوق طلا -----------------------------
+def gold_frame(fund) -> pd.DataFrame:
     rows = []
     first_usd = None
-    for i, r in enumerate(records):
-        usd_eq = unit_usd_equivalent(r)
-        if first_usd is None and usd_eq: first_usd = usd_eq
-        ounce_change = None; usd_change = None
-        if i > 0:
-            prev = records[i-1]
-            if prev.get("ounce_price_usd", 0) > 0:
-                ounce_change = (r["ounce_price_usd"] / prev["ounce_price_usd"] - 1) * 100
-            if prev.get("usd_rate_used", 0) > 0 and r.get("usd_rate_used", 0) > 0:
-                usd_change = (r["usd_rate_used"] / prev["usd_rate_used"] - 1) * 100
-        usd_return = None
-        if first_usd and usd_eq: usd_return = (usd_eq / first_usd - 1) * 100
-        gram = gold_gram_per_unit(r)
-        rows.append({"record": r, "usd_equivalent": usd_eq, "usd_return_pct": usd_return,
-                     "ounce_change_pct": ounce_change, "usd_change_pct": usd_change,
-                     "gram_per_unit": gram})
-    return rows
+    first_ounce = None
+    for index, record in enumerate(sorted(fund.get("records", []), key=lambda item: item.get("date_gregorian", ""))):
+        unit = float(record.get("unit_price", 0) or 0)
+        ounce = float(record.get("ounce_price_usd", 0) or 0)
+        rate = float(record.get("usd_rate_used", 0) or 0)
+        usd_equivalent = unit / rate if rate > 0 else 0
+        if first_usd is None and usd_equivalent > 0:
+            first_usd = usd_equivalent
+        if first_ounce is None and ounce > 0:
+            first_ounce = ounce
+        rows.append({
+            "id": record.get("id"), "record": record,
+            "date": record.get("date_gregorian", "")[:10],
+            "label": record.get("date_jalali", "—"),
+            "unit": unit, "ounce": ounce, "rate": rate,
+            "usd": usd_equivalent,
+            "usd_return": (usd_equivalent / first_usd - 1) * 100 if first_usd else 0,
+            "units_for_ounce": (ounce * rate / unit) if unit > 0 else 0,
+            "gram": (unit * 31.1035) / (ounce * rate) if ounce > 0 and rate > 0 and unit > 0 else None,
+            "ounce_index": (ounce / first_ounce * 100) if first_ounce else 100,
+            "usd_index": (usd_equivalent / first_usd * 100) if first_usd else 100,
+        })
+    return pd.DataFrame(rows)
 
-def dollar_trap_analysis(fund, days=30):
-    records = sorted(fund.get("records", []), key=lambda r: r.get("date_gregorian", ""))
-    if len(records) < 2: return None
-    last = records[-1]
-    last_date_str = last.get("date_gregorian", "")[:10]
-    if not last_date_str: return None
-    try:
-        dt_last = datetime.fromisoformat(last_date_str + "T00:00:00")
-        cutoff = (dt_last - timedelta(days=days)).strftime("%Y-%m-%d")
-    except Exception: return None
-    older = None
-    for r in records:
-        if r.get("date_gregorian", "")[:10] >= cutoff:
-            older = r; break
-    if not older or older.get("id") == last.get("id"): return None
-    ounce_change = 0; usd_change = 0
-    if older.get("ounce_price_usd", 0) > 0:
-        ounce_change = (last["ounce_price_usd"] / older["ounce_price_usd"] - 1) * 100
-    if older.get("usd_rate_used", 0) > 0:
-        usd_change = (last["usd_rate_used"] / older["usd_rate_used"] - 1) * 100
-    return {"usd_change": usd_change, "ounce_change": ounce_change,
-            "gap": usd_change - ounce_change, "days": days,
-            "older_date": older.get("date_jalali"), "last_date": last.get("date_jalali")}
 
-def ounce_signal(fund, days=90):
-    """سیگنال بر اساس انس (نسبت به میانگین ۹۰ روز اخیر)"""
-    records = sorted(fund.get("records", []), key=lambda r: r.get("date_gregorian", ""))
-    if len(records) < 3: return "⚪ داده کافی نیست"
-    last = records[-1]
-    last_date_str = last.get("date_gregorian", "")[:10]
-    if not last_date_str: return "⚪"
-    try:
-        dt_last = datetime.fromisoformat(last_date_str + "T00:00:00")
-        cutoff = (dt_last - timedelta(days=days)).strftime("%Y-%m-%d")
-    except Exception:
-        return "⚪"
-    recent = [r for r in records if r.get("date_gregorian", "")[:10] >= cutoff and r.get("ounce_price_usd", 0) > 0]
-    if len(recent) < 3:
-        recent = [r for r in records if r.get("ounce_price_usd", 0) > 0]
-    if not recent: return "⚪ داده انس کافی نیست"
-    avg = sum(r["ounce_price_usd"] for r in recent) / len(recent)
-    current = last.get("ounce_price_usd", 0)
-    if current <= 0 or avg <= 0: return "⚪ داده معتبر نیست"
-    diff = (current / avg - 1) * 100
-    if diff > 5: return f"🔴 انس {diff:+.1f}% بالای میانگین {days}روزه — فروش"
-    elif diff > 0: return f"🟡 انس {diff:+.1f}% بالای میانگین — کمی فروش"
-    elif diff > -5: return f"🟢 انس {diff:+.1f}% زیر میانگین — کمی خرید"
-    else: return f"🟢🟢 انس {diff:+.1f}% زیر میانگین — خرید قوی"
+def render_gold_fund(data, fund, dark: bool) -> None:
+    frame = gold_frame(fund)
+    st.markdown(f"### {fund.get('icon', '🥇')} {fund.get('name', '')}")
+    records = fund.get("records", [])
+    if not records:
+        st.info("هنوز رکوردی برای این صندوق ثبت نشده است.")
+    else:
+        last = frame.iloc[-1]
+        if len(frame) >= 2:
+            last_date = frame["date"].iloc[-1]
+            try:
+                cutoff = (datetime.fromisoformat(last_date + "T00:00:00") - timedelta(days=30)).strftime("%Y-%m-%d")
+            except ValueError:
+                cutoff = last_date
+            older = frame.iloc[0]
+            for _, row in frame.iterrows():
+                if row["date"] >= cutoff:
+                    older = row
+                    break
+            usd_change = (last["rate"] / older["rate"] - 1) * 100 if older["rate"] else 0
+            ounce_change = (last["ounce"] / older["ounce"] - 1) * 100 if older["ounce"] else 0
+            gap = usd_change - ounce_change
+            if gap > 10:
+                st.warning(f"⚠️ **هشدار تله دلار** — در ۳۰ روز گذشته: دلار {usd_change:+.1f}٪، انس {ounce_change:+.1f}٪، شکاف {gap:+.1f}٪. فروش صندوق بدون خرید دلار، سود دلاری را از بین می‌برد.")
+        prices = frame["unit"].tolist()
+        units = [value for value in frame["units_for_ounce"].tolist() if value > 0]
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("📉 کمترین قیمت", fmt_num(min(prices)))
+        c2.metric("📊 میانگین قیمت", fmt_num(sum(prices) / len(prices)))
+        c3.metric("📈 بیشترین قیمت", fmt_num(max(prices)))
+        c4.metric("📋 تعداد رکورد", fmt_num(len(records)))
+        if units:
+            u1, u2, u3, u4 = st.columns(4)
+            u1.metric("📉 کمترین واحد/انس", fmt_num(min(units)))
+            u2.metric("📊 میانگین واحد/انس", fmt_num(sum(units) / len(units)))
+            u3.metric("📈 بیشترین واحد/انس", fmt_num(max(units)))
+            u4.metric("💵 معادل دلاری فعلی", f"${last['usd']:,.4f}", delta=f"{last['usd_return']:+.1f}%")
 
-# ================== محاسبه بازده ماهانه بر مبنای ریال ==================
-def compute_monthly_returns(data, year_jalali):
-    """
-    بازده ماهانه بر مبنای قیمت ریالی هر واحد محاسبه می‌شود.
-    برای دارایی دلاری، قیمت هر واحد با نرخ دلار ثبت‌شده در همان تاریخ
-    به ریال تبدیل می‌شود. سود/زیان ریالی با تعداد واحد ابتدای ماه
-    محاسبه می‌شود تا خرید و فروش طی ماه به‌عنوان بازده تلقی نشود.
-    """
-    usd_rates_sorted = sorted(
-        data.get("usd_rates", []),
-        key=lambda x: x.get("created_at", "")
-    )
+        ounce_rows = frame[frame["ounce"] > 0]
+        if len(ounce_rows) >= 3:
+            recent = ounce_rows.tail(10)
+            average = recent["ounce"].mean()
+            diff = (last["ounce"] / average - 1) * 100 if average else 0
+            if diff > 5:
+                st.error(f"🔴 سیگنال انس: {diff:+.1f}٪ بالای میانگین — فروش")
+            elif diff > 0:
+                st.warning(f"🟡 سیگنال انس: {diff:+.1f}٪ بالای میانگین — کمی فروش")
+            elif diff > -5:
+                st.success(f"🟢 سیگنال انس: {diff:+.1f}٪ زیر میانگین — کمی خرید")
+            else:
+                st.success(f"🟢🟢 سیگنال انس: {diff:+.1f}٪ زیر میانگین — خرید قوی")
 
-    def get_rate_at(date_str):
-        rate = None
-        for ur in usd_rates_sorted:
-            if ur.get("created_at", "")[:10] <= date_str:
+        if len(frame) >= 2:
+            st.markdown("**📈 نمودار مقایسه‌ای (پایه = ۱۰۰)**")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=frame["label"], y=frame["unit"] / frame["unit"].iloc[0] * 100, mode="lines+markers", name="قیمت ریالی", line={"color": "#3b82f6", "width": 3}))
+            fig.add_trace(go.Scatter(x=frame["label"], y=frame["usd_index"], mode="lines+markers", name="معادل دلاری", line={"color": "#10b981", "width": 3}))
+            fig.add_trace(go.Scatter(x=frame["label"], y=frame["ounce_index"], mode="lines+markers", name="انس طلا", line={"color": "#f59e0b", "width": 2, "dash": "dot"}))
+            st.plotly_chart(chart_layout(fig, dark, 380), use_container_width=True)
+            st.caption(f"قیمت ریالی: {frame['unit'].iloc[-1] / frame['unit'].iloc[0] * 100 - 100:+.1f}٪ | دلاری: {frame['usd_index'].iloc[-1] - 100:+.1f}٪")
+
+        with st.expander("🧮 ماشین‌حساب آربیتراژ دلاری"):
+            rate_now, _ = current_rate(data)
+            if not rate_now:
+                st.warning("ابتدا نرخ دلار را در صفحهٔ «💵 دلار» ثبت کنید.")
+            else:
+                c1, c2, c3, c4 = st.columns(4)
+                units_calc = c1.number_input("تعداد واحد", min_value=0.0, value=1.0, step=1.0, key=f"arb_units_{fund['id']}")
+                sell_price = c2.number_input("قیمت فروش (ریال)", min_value=0.0, value=float(last["unit"]), step=1000.0, key=f"arb_sell_{fund['id']}")
+                target_rate = c3.number_input("نرخ دلار پیش‌بینی", min_value=0.0, value=float(rate_now), step=1000.0, key=f"arb_rate_{fund['id']}")
+                buy_price = c4.number_input("قیمت خرید مجدد (ریال)", min_value=0.0, value=float(last["unit"]), step=1000.0, key=f"arb_buy_{fund['id']}")
+                f1, f2, f3 = st.columns(3)
+                sell_fee = f1.number_input("کارمزد فروش صندوق (%)", min_value=0.0, value=0.5, step=0.1, key=f"arb_sf_{fund['id']}")
+                usd_spread = f2.number_input("اسپرد دلار (%)", min_value=0.0, value=1.0, step=0.1, key=f"arb_us_{fund['id']}")
+                buy_fee = f3.number_input("کارمزد خرید صندوق (%)", min_value=0.0, value=0.5, step=0.1, key=f"arb_bf_{fund['id']}")
+                if units_calc > 0 and sell_price > 0 and target_rate > 0 and buy_price > 0:
+                    gross = units_calc * sell_price * (1 - sell_fee / 100)
+                    dollars = gross / (target_rate * (1 + usd_spread / 100))
+                    irr_back = dollars * target_rate * (1 - usd_spread / 100)
+                    new_units = (irr_back / buy_price) * (1 - buy_fee / 100)
+                    net_units = new_units - units_calc
+                    r1, r2, r3 = st.columns(3)
+                    r1.metric("💵 دلار به‌دست‌آمده", f"${dollars:,.4f}")
+                    r2.metric("📦 واحد پس از خرید مجدد", f"{new_units:,.4f}")
+                    r3.metric("سود خالص", f"{net_units:+,.4f} واحد", delta=f"{net_units * buy_price:+,.0f} ریال")
+                    if net_units > 0:
+                        st.success("✅ این آربیتراژ سودآور است.")
+                    else:
+                        st.error("❌ این آربیتراژ ضرر دارد.")
+
+    with st.expander(f"➕ افزودن رکورد برای {fund.get('name', '')}", expanded=not records):
+        rate_now, rate_date = current_rate(data)
+        if not rate_now:
+            st.warning("⚠️ ابتدا نرخ دلار را در صفحهٔ «💵 دلار» ثبت کنید.")
+        else:
+            st.caption(f"نرخ دلار فعلی: **{fmt_num(rate_now)}** ریال ({rate_date})")
+            c1, c2, c3 = st.columns(3)
+            g_date = c1.text_input("تاریخ (شمسی)", value=today_jalali_str(), key=f"gdate_{fund['id']}")
+            g_price = c2.number_input("قیمت واحد (ریال)", min_value=0.0, step=1000.0, key=f"gprice_{fund['id']}")
+            g_ounce = c3.number_input("انس طلا (دلار)", min_value=0.0, value=3000.0, step=1.0, key=f"gounce_{fund['id']}")
+            g_note = st.text_input("توضیح (اختیاری)", key=f"gnote_{fund['id']}")
+            if g_price > 0 and g_ounce > 0:
+                st.success(f"📊 واحد برای ۱ انس: **{(g_ounce * rate_now) / g_price:,.0f}** واحد | معادل دلاری: **${g_price / rate_now:.4f}**")
+            if st.button("💾 ثبت رکورد", key=f"gsave_{fund['id']}", use_container_width=True):
+                jdate = parse_jalali(g_date)
+                if jdate is None or g_price <= 0 or g_ounce <= 0:
+                    st.error("مقادیر معتبر وارد کنید.")
+                else:
+                    fund.setdefault("records", []).append({
+                        "id": short_id(), "date_gregorian": jalali_to_gregorian_iso(jdate, datetime.now().strftime("%H:%M")),
+                        "date_jalali": jdate.strftime("%Y/%m/%d"), "unit_price": g_price,
+                        "ounce_price_usd": g_ounce, "usd_rate_used": rate_now, "note": g_note.strip(),
+                    })
+                    save_all(data)
+                    st.rerun()
+
+    if records:
+        st.markdown("**📋 تاریخچه رکوردها**")
+        for record in reversed(sorted(records, key=lambda item: item.get("date_gregorian", ""))):
+            with st.expander(f"📅 {record.get('date_jalali', '—')} — {fmt_num(record.get('unit_price', 0))} ریال"):
+                with st.form(f"edit_gold_{fund['id']}_{record['id']}"):
+                    c1, c2, c3 = st.columns(3)
+                    edit_date = c1.text_input("تاریخ", value=record.get("date_jalali", today_jalali_str()))
+                    edit_price = c2.number_input("قیمت واحد", value=float(record.get("unit_price", 0) or 0), min_value=0.0, format="%.0f", step=1000.0)
+                    edit_ounce = c3.number_input("انس (دلار)", value=float(record.get("ounce_price_usd", 0) or 0), min_value=0.0, format="%.2f")
+                    c4, c5 = st.columns(2)
+                    edit_rate = c4.number_input("نرخ دلار", value=float(record.get("usd_rate_used", 0) or 0), min_value=0.0, format="%.0f", step=1000.0)
+                    edit_note = c5.text_input("توضیح", value=record.get("note", ""))
+                    sc, dc = st.columns(2)
+                    if sc.form_submit_button("💾 ذخیره", use_container_width=True):
+                        jdate = parse_jalali(edit_date)
+                        if jdate and edit_price > 0 and edit_ounce > 0 and edit_rate > 0:
+                            record.update({
+                                "date_gregorian": jalali_to_gregorian_iso(jdate, datetime.now().strftime("%H:%M")),
+                                "date_jalali": jdate.strftime("%Y/%m/%d"), "unit_price": edit_price,
+                                "ounce_price_usd": edit_ounce, "usd_rate_used": edit_rate, "note": edit_note.strip(),
+                            })
+                            save_all(data)
+                            st.rerun()
+                    if dc.form_submit_button("🗑️ حذف", use_container_width=True):
+                        fund["records"] = [item for item in fund.get("records", []) if item.get("id") != record.get("id")]
+                        save_all(data)
+                        st.rerun()
+
+    with st.expander("⚠️ حذف صندوق"):
+        confirm = st.checkbox("مطمئنم", key=f"confirm_gold_{fund['id']}")
+        if st.button("🗑️ حذف صندوق", disabled=not confirm, key=f"delete_gold_{fund['id']}", use_container_width=True):
+            data["gold_funds"] = [item for item in data["gold_funds"] if item.get("id") != fund.get("id")]
+            data["synthetic_pairs"] = [
+                pair for pair in data.get("synthetic_pairs", [])
+                if pair.get("left") != f"gold:{fund['id']}" and pair.get("right") != f"gold:{fund['id']}"
+            ]
+            save_all(data)
+            st.rerun()
+
+
+# ----------------------------- صفحات -----------------------------
+def page_overview(data, dark: bool) -> None:
+    assets = data.get("assets", [])
+    rate, rate_date = current_rate(data)
+    st.header("📊 نمای کلی دارایی‌ها")
+    total_usd = 0.0
+    total_irr = 0.0
+    rows = []
+    for asset in assets:
+        value, usd_value = asset_value(asset, rate)
+        record = latest_record(asset.get("records", []))
+        total_usd += usd_value or 0
+        total_irr += value if asset.get("currency", "IRR") != "USD" else value * (rate or 0)
+        rows.append({
+            "دارایی": asset.get("name"), "ارز": currency_label(asset.get("currency", "IRR")),
+            "ارزش": fmt_num(value), "معادل دلاری": f"${usd_value:,.2f}" if usd_value else "—",
+            "آخرین بروزرسانی": record.get("date_jalali") if record else "—",
+        })
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("💰 ارزش کل (دلار)", f"${total_usd:,.2f}")
+    c2.metric("📁 دارایی‌ها", len(assets))
+    c3.metric("💵 نرخ دلار", f"{fmt_num(rate)} ریال" if rate else "ثبت نشده")
+    c4.metric("🔀 جفت‌های مصنوعی", len(data.get("synthetic_pairs", [])))
+    if not assets:
+        st.info("هنوز دارایی‌ای ثبت نشده است.")
+        return
+    frame = pd.DataFrame(rows)
+    render_table(frame)
+    pie_rows = [{"name": asset.get("name"), "value": (asset_value(asset, rate)[1] or 0)} for asset in assets]
+    pie_frame = pd.DataFrame([row for row in pie_rows if row["value"] > 0])
+    if not pie_frame.empty:
+        fig = px.pie(pie_frame, values="value", names="name", hole=0.45)
+        st.plotly_chart(chart_layout(fig, dark, 320), use_container_width=True)
+
+
+def page_add_asset(data) -> None:
+    st.header("➕ افزودن دارایی")
+    with st.container(border=True):
+        with st.form("add_asset_form", clear_on_submit=True):
+            c1, c2, c3 = st.columns([3, 2, 2])
+            name = c1.text_input("نام", placeholder="وبملت، طلا، ...")
+            currency = c2.selectbox("ارز", ["IRR", "USD"], format_func=lambda value: "ریال" if value == "IRR" else "دلار")
+            color = c3.color_picker("رنگ", value=PALETTE[len(data.get("assets", [])) % len(PALETTE)])
+            c4, c5, c6 = st.columns([2, 2, 3])
+            quantity = c4.number_input("تعداد", min_value=0.0, format="%.4f", step=1.0)
+            price = c5.number_input("قیمت واحد", min_value=0.0, format="%.2f", step=1000.0)
+            note = c6.text_input("توضیح")
+            if st.form_submit_button("💾 ایجاد دارایی", use_container_width=True):
+                if not name.strip():
+                    st.error("نام را وارد کنید.")
+                else:
+                    asset_id = short_id()
+                    records = []
+                    if quantity > 0 and price > 0:
+                        records.append({
+                            "id": asset_id + "_r0", "date_gregorian": datetime.now().isoformat(),
+                            "date_jalali": today_jalali_str(), "quantity": quantity,
+                            "unit_price": price, "note": note.strip() or "رکورد اولیه",
+                        })
+                    data["assets"].append({
+                        "id": asset_id, "name": name.strip(), "icon": "fa-wallet", "color": color,
+                        "overview_emoji": "", "currency": currency,
+                        "created_at_gregorian": datetime.now().isoformat(),
+                        "created_at_jalali": today_jalali_str(), "records": records,
+                    })
+                    save_all(data)
+                    st.rerun()
+
+
+def page_usd(data, dark: bool) -> None:
+    st.header("💵 نرخ دلار")
+    with st.container(border=True):
+        with st.form("usd_rate_form", clear_on_submit=True):
+            c1, c2, c3 = st.columns([2, 2, 3])
+            new_rate = c1.number_input("نرخ (ریال)", min_value=0, step=1000, format="%d")
+            date_text = c2.text_input("تاریخ", value=today_jalali_str())
+            note = c3.text_input("توضیح")
+            if st.form_submit_button("💾 ثبت", use_container_width=True):
+                jdate = parse_jalali(date_text)
+                if new_rate > 0 and jdate:
+                    data["usd_rates"].append({
+                        "id": short_id(), "rate": new_rate, "note": note.strip(),
+                        "created_at": jalali_to_gregorian_iso(jdate, datetime.now().strftime("%H:%M")),
+                        "created_at_jalali": jdate.strftime("%Y/%m/%d"),
+                    })
+                    save_all(data)
+                    st.rerun()
+                else:
+                    st.error("نرخ و تاریخ معتبر وارد کنید.")
+    rates = sorted(data.get("usd_rates", []), key=lambda item: item.get("created_at", ""))
+    if not rates:
+        st.info("هنوز نرخی ثبت نشده است.")
+        return
+    current, current_date = current_rate(data)
+    c1, c2 = st.columns(2)
+    c1.metric("نرخ فعلی", f"{fmt_num(current)} ریال")
+    c2.metric("آخرین ثبت", current_date or "—")
+    chart = pd.DataFrame([{"تاریخ": item.get("created_at_jalali"), "نرخ": float(item["rate"])} for item in rates])
+    fig = px.line(chart, x="تاریخ", y="نرخ", markers=True)
+    st.plotly_chart(chart_layout(fig, dark, 320), use_container_width=True)
+    st.subheader("📋 تاریخچه")
+    for item in reversed(rates):
+        with st.expander(f"{fmt_num(item['rate'])} ریال — {item.get('created_at_jalali', '—')}"):
+            with st.form(f"edit_rate_{item['id']}"):
+                c1, c2 = st.columns(2)
+                edit_date = c1.text_input("تاریخ", value=item.get("created_at_jalali", today_jalali_str()))
+                edit_rate = c2.number_input("نرخ", value=int(float(item["rate"])), min_value=1, step=1000, format="%d")
+                edit_note = st.text_input("توضیح", value=item.get("note", ""))
+                sc, dc = st.columns(2)
+                if sc.form_submit_button("💾 ذخیره", use_container_width=True):
+                    jdate = parse_jalali(edit_date)
+                    if jdate:
+                        item.update({
+                            "rate": edit_rate, "note": edit_note.strip(),
+                            "created_at": jalali_to_gregorian_iso(jdate, datetime.now().strftime("%H:%M")),
+                            "created_at_jalali": jdate.strftime("%Y/%m/%d"),
+                        })
+                        save_all(data)
+                        st.rerun()
+                if dc.form_submit_button("🗑️ حذف", use_container_width=True):
+                    data["usd_rates"] = [row for row in data["usd_rates"] if row.get("id") != item["id"]]
+                    save_all(data)
+                    st.rerun()
+
+
+def page_gold(data, dark: bool) -> None:
+    st.header("🥇 صندوق‌های طلا")
+    with st.container(border=True):
+        with st.form("add_gold_fund", clear_on_submit=True):
+            c1, c2 = st.columns([3, 2])
+            name = c1.text_input("نام صندوق", placeholder="عیار، لوتوس، ...")
+            icon = c2.text_input("نماد", value="🥇", max_chars=8)
+            if st.form_submit_button("💾 ایجاد صندوق", use_container_width=True):
+                if name.strip():
+                    data["gold_funds"].append({
+                        "id": short_id(), "name": name.strip(), "icon": icon.strip() or "🥇",
+                        "created_at": datetime.now().isoformat(), "records": [],
+                    })
+                    save_all(data)
+                    st.rerun()
+                else:
+                    st.error("نام صندوق را وارد کنید.")
+    funds = data.get("gold_funds", [])
+    if not funds:
+        st.info("هنوز صندوقی اضافه نشده است.")
+        return
+    for fund in funds:
+        render_gold_fund(data, fund, dark)
+        st.divider()
+
+
+def page_synthetic(data, dark: bool) -> None:
+    st.header("🔀 جفت ارز مصنوعی")
+    st.caption("نسبت قیمت دو ابزار دارای تاریخچه؛ برای نمونه «صندوق طلا / دلار» یا «وبملت / صندوق طلا». قیمت‌ها برای مقایسه به ریال تبدیل می‌شوند.")
+    instruments = get_instruments(data)
+    if len(instruments) < 2:
+        st.info("برای ساخت جفت، دست‌کم دو ابزار دارای داده لازم است. یک دارایی، صندوق طلا یا نرخ دلار ثبت کنید.")
+        return
+    labels = {item["id"]: item["label"] for item in instruments}
+    with st.container(border=True):
+        st.subheader("➕ ساخت جفت جدید")
+        c1, c2 = st.columns(2)
+        left_id = c1.selectbox("سمت اول (صورت)", list(labels), format_func=labels.get, key="pair_left")
+        right_id = c2.selectbox("سمت دوم (مخرج)", list(labels), index=min(1, len(labels) - 1), format_func=labels.get, key="pair_right")
+        duplicate = any(pair.get("left") == left_id and pair.get("right") == right_id for pair in data.get("synthetic_pairs", []))
+        if st.button("🔀 ساخت جفت مصنوعی", use_container_width=True, disabled=(left_id == right_id or duplicate)):
+            data["synthetic_pairs"].append({
+                "id": short_id(), "left": left_id, "right": right_id,
+                "name": f"{labels[left_id]} / {labels[right_id]}",
+                "created_at": datetime.now().isoformat(),
+            })
+            save_all(data)
+            st.rerun()
+        if left_id == right_id:
+            st.caption("دو سمت باید متفاوت باشند.")
+        elif duplicate:
+            st.caption("این جفت قبلاً ساخته شده است.")
+
+    pairs = data.get("synthetic_pairs", [])
+    if not pairs:
+        st.info("هنوز جفتی نساخته‌اید.")
+        return
+    pair_labels = {pair["id"]: pair.get("name", "") for pair in pairs}
+    selected = st.selectbox("جفت‌های ذخیره‌شده", list(pair_labels), format_func=pair_labels.get)
+    pair = next(item for item in pairs if item["id"] == selected)
+    left_label = labels.get(pair.get("left"), pair.get("left", ""))
+    right_label = labels.get(pair.get("right"), pair.get("right", ""))
+    frame = build_pair_series(data, pair.get("left"), pair.get("right"))
+    c1, c2, c3 = st.columns(3)
+    if frame.empty:
+        c1.metric("نسبت فعلی", "—")
+        c2.metric("تغییر از ابتدا", "—")
+        c3.metric("تعداد نقاط", "0")
+        st.warning("داده‌ای برای این جفت موجود نیست؛ ممکن است منبع حذف شده باشد.")
+    else:
+        last = frame.iloc[-1]
+        first = frame.iloc[0]
+        c1.metric("نسبت فعلی", f"{last['ratio']:,.5f}", help=f"{left_label} ÷ {right_label}")
+        c2.metric("تغییر نسبت از ابتدا", f"{last['ratio_index'] - 100:+.2f}٪")
+        c3.metric("تعداد نقاط", f"{len(frame):,}")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=frame["label"], y=frame["ratio"], mode="lines+markers", name="نسبت مصنوعی", line={"color": "#8b5cf6", "width": 3}, fill="tozeroy"))
+        fig.update_layout(yaxis_title="نسبت", xaxis_title="تاریخ")
+        st.plotly_chart(chart_layout(fig, dark, 400), use_container_width=True)
+        fig2 = go.Figure()
+        fig2.add_trace(go.Scatter(x=frame["label"], y=frame["left_index"], mode="lines+markers", name=left_label, line={"color": "#3b82f6", "width": 3}))
+        fig2.add_trace(go.Scatter(x=frame["label"], y=frame["right_index"], mode="lines+markers", name=right_label, line={"color": "#10b981", "width": 3}))
+        fig2.update_layout(yaxis_title="شاخص (پایه = ۱۰۰)")
+        st.plotly_chart(chart_layout(fig2, dark, 360), use_container_width=True)
+        table = frame[["label", "left", "right", "ratio", "ratio_index"]].copy()
+        table.columns = ["تاریخ", left_label, right_label, "نسبت", "شاخص"]
+        render_table(table.sort_values("تاریخ", ascending=False).head(15))
+        with st.expander("🗑️ حذف این جفت"):
+            if st.button("حذف جفت مصنوعی", key=f"del_pair_{pair['id']}", use_container_width=True):
+                data["synthetic_pairs"] = [item for item in pairs if item["id"] != pair["id"]]
+                save_all(data)
+                st.rerun()
+
+
+def compute_monthly_returns(data, year_jalali: int) -> dict:
+    rates_sorted = sorted(data.get("usd_rates", []), key=lambda item: item.get("created_at", ""))
+
+    def get_rate(date_str: str):
+        value = None
+        for item in rates_sorted:
+            if item.get("created_at", "")[:10] <= date_str:
                 try:
-                    candidate = float(ur.get("rate", 0) or 0)
+                    candidate = float(item.get("rate", 0) or 0)
                     if candidate > 0:
-                        rate = candidate
+                        value = candidate
                 except (TypeError, ValueError):
                     continue
             else:
                 break
-        return rate
+        return value
 
-    def price_irr_for_record(record, item_type, item_currency):
+    def price_irr(record, kind, currency):
         try:
-            unit_price = float(record.get("unit_price", 0) or 0)
+            unit = float(record.get("unit_price", 0) or 0)
         except (TypeError, ValueError):
             return None
-
-        if unit_price <= 0:
+        if unit <= 0:
             return None
+        if kind == "gold" or currency == "IRR":
+            return unit
+        rate = get_rate(record.get("date_gregorian", "")[:10])
+        return unit * rate if rate else None
 
-        # قیمت واحد صندوق طلا از ابتدا به ریال ثبت می‌شود.
-        if item_type == "gold" or item_currency == "IRR":
-            return unit_price
-
-        # دارایی دلاری باید با نرخ دلار همان تاریخ به ریال تبدیل شود.
-        date_str = record.get("date_gregorian", "")[:10]
-        rate = get_rate_at(date_str)
-        return unit_price * rate if rate and rate > 0 else None
-
-    items = []
-    for asset in data.get("assets", []):
-        items.append({
-            "id": f"asset_{asset['id']}",
-            "name": asset["name"],
-            "type": "asset",
-            "currency": asset.get("currency", "IRR"),
-            "records": asset.get("records", [])
-        })
-
-    for fund in data.get("gold_funds", []):
-        items.append({
-            "id": f"gold_{fund['id']}",
-            "name": f"🥇 {fund['name']}",
-            "type": "gold",
-            "currency": "IRR",
-            "records": fund.get("records", [])
-        })
-
+    items = [
+        {"name": asset["name"], "type": "asset", "currency": asset.get("currency", "IRR"), "records": asset.get("records", [])}
+        for asset in data.get("assets", [])
+    ]
+    items += [
+        {"name": f"🥇 {fund['name']}", "type": "gold", "currency": "IRR", "records": fund.get("records", [])}
+        for fund in data.get("gold_funds", [])
+    ]
     results = {}
     for item in items:
-        records = sorted(
-            item["records"],
-            key=lambda r: r.get("date_gregorian", "")
-        )
+        records = sorted(item["records"], key=lambda row: row.get("date_gregorian", ""))
         monthly = {}
-
         for month in range(1, 13):
             try:
-                start_boundary = jdatetime.date(year_jalali, month, 1)
-                end_boundary = (
-                    jdatetime.date(year_jalali + 1, 1, 1)
-                    if month == 12
-                    else jdatetime.date(year_jalali, month + 1, 1)
-                )
-                start_g = start_boundary.togregorian().strftime("%Y-%m-%d")
-                end_g = end_boundary.togregorian().strftime("%Y-%m-%d")
+                start = jdatetime.date(year_jalali, month, 1).togregorian().strftime("%Y-%m-%d")
+                end = (jdatetime.date(year_jalali + 1, 1, 1) if month == 12 else jdatetime.date(year_jalali, month + 1, 1)).togregorian().strftime("%Y-%m-%d")
             except Exception:
                 monthly[month] = None
                 continue
-
-            # فقط رکوردهای واقعاً ثبت‌شده در همین ماه
-            month_records = [
-                r for r in records
-                if start_g <= r.get("date_gregorian", "")[:10] < end_g
-            ]
-
-            # ماهی که هیچ داده‌ای ندارد نباید بازده ساختگیِ صفر بگیرد.
-            if not month_records:
+            in_month = [row for row in records if start <= row.get("date_gregorian", "")[:10] < end]
+            if not in_month:
                 monthly[month] = None
                 continue
-
-            # مبنای شروع: آخرین وضعیت قبل از ماه.
-            # اگر سابقه‌ای وجود ندارد (مثلاً اولین ثبت در ۸ آبان است)،
-            # اولین رکورد همان ماه مبنای شروع دوره مشاهده‌شده می‌شود.
-            start_candidates = [
-                r for r in records
-                if r.get("date_gregorian", "")[:10] < start_g
-            ]
-            start_rec = start_candidates[-1] if start_candidates else month_records[0]
-            end_rec = month_records[-1]
-
-            # با یک رکورد تنها، تغییر قیمت درون دوره قابل محاسبه نیست.
+            before = [row for row in records if row.get("date_gregorian", "")[:10] < start]
+            start_rec = before[-1] if before else in_month[0]
+            end_rec = in_month[-1]
             if start_rec is end_rec:
                 monthly[month] = None
                 continue
-
-            start_price_irr = price_irr_for_record(
-                start_rec, item["type"], item["currency"]
-            )
-            end_price_irr = price_irr_for_record(
-                end_rec, item["type"], item["currency"]
-            )
-
-            if (
-                start_price_irr is None
-                or end_price_irr is None
-                or start_price_irr <= 0
-            ):
+            start_price = price_irr(start_rec, item["type"], item["currency"])
+            end_price = price_irr(end_rec, item["type"], item["currency"])
+            if not start_price or not end_price:
                 monthly[month] = None
                 continue
-
-            return_pct = (
-                (end_price_irr / start_price_irr) - 1
-            ) * 100
-
-            try:
-                start_quantity = float(start_rec.get("quantity", 0) or 0)
-            except (TypeError, ValueError):
-                start_quantity = 0.0
-
-            # سود/زیان ریالی بر اساس تعداد ابتدای ماه؛
-            # تغییر تعداد ناشی از خرید یا فروش وارد بازده نمی‌شود.
-            profit_irr = (
-                end_price_irr - start_price_irr
-            ) * start_quantity
-
             monthly[month] = {
-                "return_pct": return_pct,
-                "profit_irr": profit_irr,
-                "start_price_irr": start_price_irr,
-                "end_price_irr": end_price_irr,
-                "start_quantity": start_quantity
+                "return_pct": (end_price / start_price - 1) * 100,
+                "profit_irr": (end_price - start_price) * float(start_rec.get("quantity", 0) or 0),
             }
-
-        results[item["id"]] = {
-            "name": item["name"],
-            "monthly": monthly,
-            "type": item["type"]
-        }
-
+        results[item["name"]] = monthly
     return results
 
 
-def render_monthly_returns_page(data):
+def page_monthly(data, dark: bool) -> None:
     st.header("📅 بازده ماهانه")
-    st.caption(
-        "محاسبه بازده بر مبنای تغییر ارزش ریالی هر واحد؛ "
-        "اگر سابقه‌ای پیش از ماه وجود نداشته باشد، بازده از اولین ثبت همان ماه "
-        "تا آخرین ثبت ماه محاسبه می‌شود."
-    )
-    _dark = get_settings(data)["dark_mode"]
-
-    all_dates = []
+    st.caption("بازده بر پایهٔ تغییر قیمت هر واحد؛ خرید و فروش تعداد، بازده ساختگی ایجاد نمی‌کند.")
+    dates = []
     for asset in data.get("assets", []):
-        for record in asset.get("records", []):
-            if record.get("date_jalali"):
-                all_dates.append(record["date_jalali"])
+        dates += [row.get("date_jalali", "") for row in asset.get("records", [])]
     for fund in data.get("gold_funds", []):
-        for record in fund.get("records", []):
-            if record.get("date_jalali"):
-                all_dates.append(record["date_jalali"])
-
-    years = sorted(
-        set(int(d[:4]) for d in all_dates if d[:4].isdigit()),
-        reverse=True
-    )
+        dates += [row.get("date_jalali", "") for row in fund.get("records", [])]
+    years = sorted({int(value[:4]) for value in dates if value[:4].isdigit()}, reverse=True)
     if not years:
-        st.info("هنوز داده‌ای ثبت نشده.")
+        st.info("هنوز داده‌ای ثبت نشده است.")
         return
-
-    month_names_full = [
-        "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
-        "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"
-    ]
-
-    c1, c2, c3 = st.columns(3)
-    selected_year = c1.selectbox("سال (شمسی)", years, key="mr_year")
-    type_filter = c2.selectbox(
-        "نوع", ["همه", "دارایی‌ها", "صندوق‌های طلا"], key="mr_type"
-    )
-    month_from = c3.selectbox(
-        "از ماه", month_names_full, index=0, key="mr_from"
-    )
-    month_to = st.selectbox(
-        "تا ماه", month_names_full, index=11, key="mr_to"
-    )
-
-    from_idx = month_names_full.index(month_from) + 1
-    to_idx = month_names_full.index(month_to) + 1
-    if from_idx > to_idx:
+    month_names = ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"]
+    c1, c2, c3, c4 = st.columns(4)
+    year = c1.selectbox("سال (شمسی)", years)
+    month_from = c2.selectbox("از ماه", month_names, index=0)
+    month_to = c3.selectbox("تا ماه", month_names, index=11)
+    mode = c4.selectbox("نمایش", ["درصد بازده", "سود / زیان ریالی"])
+    start_idx = month_names.index(month_from) + 1
+    end_idx = month_names.index(month_to) + 1
+    if start_idx > end_idx:
         st.warning("ماه شروع باید قبل از ماه پایان باشد.")
         return
-
-    results = compute_monthly_returns(data, selected_year)
-    if type_filter == "دارایی‌ها":
-        results = {
-            k: v for k, v in results.items() if v["type"] == "asset"
-        }
-    elif type_filter == "صندوق‌های طلا":
-        results = {
-            k: v for k, v in results.items() if v["type"] == "gold"
-        }
-
-    if not results:
-        st.info("داده‌ای برای این انتخاب وجود ندارد.")
-        return
-
-    month_labels = month_names_full[from_idx - 1:to_idx]
-    plot_data = {}
-    for item_id, info in results.items():
-        monthly_values = [
-            info["monthly"].get(m)
-            for m in range(from_idx, to_idx + 1)
-        ]
-        if any(value is not None for value in monthly_values):
-            plot_data[info["name"]] = monthly_values
-
-    if not plot_data:
-        st.info("برای این بازه، بازده قابل محاسبه‌ای وجود ندارد.")
-        return
-
-    mode = st.radio(
-        "نوع نمایش",
-        ["📊 درصد بازده", "💰 سود / زیان به ریال"],
-        horizontal=True,
-        key="mr_mode"
-    )
-
-    fig = go.Figure()
-    for name, values in plot_data.items():
-        if mode.startswith("📊"):
-            y_vals = [
-                v["return_pct"] if v is not None else 0
-                for v in values
-            ]
-            text_vals = [
-                f'{v["return_pct"]:+.2f}%' if v is not None else "—"
-                for v in values
-            ]
-            y_title = "بازده ماهانه (%)"
-        else:
-            y_vals = [
-                v["profit_irr"] if v is not None else 0
-                for v in values
-            ]
-            text_vals = [
-                f'{v["profit_irr"]:+,.0f} ریال' if v is not None else "—"
-                for v in values
-            ]
-            y_title = "سود / زیان ماهانه (ریال)"
-
-        fig.add_trace(go.Bar(
-            name=name,
-            x=month_labels,
-            y=y_vals,
-            text=text_vals,
-            textposition="outside",
-            hovertemplate=(
-                "%{x}<br>%{fullData.name}<br>%{text}<extra></extra>"
-            )
-        ))
-
-    fig.update_layout(
-        barmode="group",
-        title=f"بازده ماهانه سال {selected_year}",
-        xaxis_title="ماه",
-        yaxis_title=y_title,
-        font=dict(
-            family="Vazirmatn, Tahoma",
-            size=12,
-            color="#e6edf3" if _dark else "#1f2937"
-        ),
-        paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-        plot_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-        hovermode="x unified",
-        height=500,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.25,
-            xanchor="center",
-            x=0.5
-        )
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.subheader("📋 جدول بازده ماهانه")
-    df_table = pd.DataFrame({"ماه": month_labels})
-    for name, values in plot_data.items():
-        if mode.startswith("📊"):
-            df_table[name] = [
-                f'{v["return_pct"]:+.2f}%' if v is not None else "—"
-                for v in values
-            ]
-        else:
-            df_table[name] = [
-                f'{v["profit_irr"]:+,.0f} ریال' if v is not None else "—"
-                for v in values
-            ]
-    render_html_table(df_table, dark=_dark)
-
-    st.subheader("📊 خلاصه بازده در بازه انتخابی")
-    summary_rows = []
-    for name, values in plot_data.items():
-        valid = [v for v in values if v is not None]
-        if not valid:
+    results = compute_monthly_returns(data, year)
+    labels = month_names[start_idx - 1:end_idx]
+    rows = []
+    figure = go.Figure()
+    for name, monthly in results.items():
+        values = [monthly.get(month) for month in range(start_idx, end_idx + 1)]
+        if not any(values):
             continue
-
-        cumulative = 1.0
-        for value in valid:
-            cumulative *= 1 + value["return_pct"] / 100
-
-        total_profit_irr = sum(v["profit_irr"] for v in valid)
-        pct_values = [v["return_pct"] for v in valid]
-
-        summary_rows.append({
-            "نام": name,
-            "سود / زیان ریالی بازه": f"{total_profit_irr:+,.0f} ریال",
-            "بازده کل بازه": f"{(cumulative - 1) * 100:+.2f}%",
-            "میانگین ماهانه": f"{sum(pct_values) / len(pct_values):+.2f}%",
-            "بهترین ماه": f"{max(pct_values):+.2f}%",
-            "بدترین ماه": f"{min(pct_values):+.2f}%",
-            "تعداد ماه": len(valid)
-        })
-
-    if summary_rows:
-        render_html_table(pd.DataFrame(summary_rows), dark=_dark)
-
-
-# ================== گرید آیکون ==================
-def _icon_grid_picker(prefix, current, on_save):
-    icons = load_fa_icons()
-    all_cats = set()
-    for ic in icons:
-        for c in ic.get("categories", []): all_cats.add(c)
-    cat_order = [k for k in CATEGORY_LABELS.keys() if k in all_cats]
-    cat_order += sorted([c for c in all_cats if c not in CATEGORY_LABELS])
-    cat_options = ["__all__"] + cat_order
-    c1, c2 = st.columns([2, 3])
-    cat = c1.selectbox("📂 دسته", cat_options,
-                       format_func=lambda x: "🌐 همه" if x == "__all__" else CATEGORY_LABELS.get(x, x),
-                       key=f"{prefix}_cat")
-    s = c2.text_input("🔍", key=f"{prefix}_search", placeholder="جستجو...", label_visibility="collapsed")
-    filtered = icons if cat == "__all__" else [i for i in icons if cat in i.get("categories", [])]
-    if s:
-        q = s.lower()
-        filtered = [i for i in filtered if q in i["label"].lower() or q in i["class"].lower()]
-    per_page = 48; total = len(filtered)
-    pages = max(1, (total + per_page - 1) // per_page)
-    pk = f"{prefix}_page"; catk = f"{prefix}_cat_prev"
-    if catk not in st.session_state or st.session_state[catk] != cat:
-        st.session_state[pk] = 0; st.session_state[catk] = cat
-    if st.session_state.get(pk, 0) >= pages: st.session_state[pk] = 0
-    page = st.session_state.get(pk, 0)
-    display = filtered[page * per_page:(page + 1) * per_page]
-    st.caption(f"**{total}** آیکون — صفحه **{page + 1}** از **{pages}**")
-    if total == 0: st.info("آیکونی یافت نشد."); return
-    for row in range(0, len(display), 8):
-        cols = st.columns(8)
-        for j, ic in enumerate(display[row:row + 8]):
-            with cols[j]:
-                is_cur = (ic["class"] == current)
-                border = "3px solid #22c55e" if is_cur else "1px solid #e5e7eb"
-                st.markdown(
-                    f'<div style="text-align:center; padding:10px 4px; border:{border}; '
-                    f'border-radius:8px; margin-bottom:4px; background:#f9fafb;">'
-                    f'<i class="fa-solid {ic["class"]}" style="font-size:1.6rem; color:#3b82f6;"></i></div>',
-                    unsafe_allow_html=True)
-                lbl = "✅" if is_cur else "انتخاب"
-                if st.button(lbl, key=f"{prefix}_btn_{ic['class']}", use_container_width=True, disabled=is_cur):
-                    on_save(ic["class"]); st.rerun()
-    if pages > 1:
-        pc1, pc2, pc3 = st.columns([1, 2, 1])
-        with pc1:
-            if st.button("◀ قبلی", key=f"{prefix}_prev", use_container_width=True, disabled=(page == 0)):
-                st.session_state[pk] = page - 1; st.rerun()
-        with pc2:
-            st.markdown(f'<div style="text-align:center; padding-top:8px; font-weight:600;">صفحه {page + 1} / {pages}</div>', unsafe_allow_html=True)
-        with pc3:
-            if st.button("بعدی ▶", key=f"{prefix}_next", use_container_width=True, disabled=(page >= pages - 1)):
-                st.session_state[pk] = page + 1; st.rerun()
-
-def _emoji_grid_picker(prefix, current, on_save):
-    EMOJIS = ["📁", "🪙", "💎", "👑", "💰", "💵", "💴", "💶", "💷", "🏦",
-              "🏠", "🏢", "🚗", "🚚", "📈", "📊", "📉", "⚡", "🔥", "💧",
-              "🌾", "🏭", "🎁", "🥇", "🥈", "🥉", "🌱", "💼", "🏪", "🧾",
-              "🏷️", "⚖️", "🛡️", "⛽", "🔐", "👛", "💲", "₿", "Ξ", "📦",
-              "🎯", "🎨", "🌍", "⭐", "❤️", "💡", "🔑", "🎓", "🎵", "🎮"]
-    for row in range(0, len(EMOJIS), 10):
-        cols = st.columns(10)
-        for j, em in enumerate(EMOJIS[row:row + 10]):
-            with cols[j]:
-                is_cur = (em == current)
-                lbl = f"{'✅' if is_cur else ''}{em}"
-                if st.button(lbl, key=f"{prefix}_em_{row + j}", use_container_width=True):
-                    on_save(em); st.rerun()
-    st.divider()
-    c1, c2 = st.columns([3, 1])
-    custom = c1.text_input("ایموجی دلخواه", value=current or "", max_chars=8, key=f"{prefix}_custom")
-    if c2.button("💾 ذخیره", key=f"{prefix}_save_custom", use_container_width=True):
-        on_save(custom.strip()[:8]); st.rerun()
-    if st.button("🔄 خودکار", key=f"{prefix}_clear", use_container_width=True):
-        on_save(""); st.rerun()
-
-# ================== مقداردهی ==================
-if "data" not in st.session_state:
-    st.session_state.data = load_all()
-st.session_state.data = migrate_data(st.session_state.data)
-data = st.session_state.data
-data.setdefault("assets", []); data.setdefault("usd_rates", []); data.setdefault("gold_funds", [])
-
-inject_app(data)
-_dark = get_settings(data)["dark_mode"]
-assets = data.get("assets", [])
-
-# ================== سایدبار ==================
-with st.sidebar:
-    c_date, c_mode, c_logout = st.columns([3, 1, 1])
-    with c_date: st.markdown(f"### 🗓️ {today_jalali_str()}")
-    with c_mode:
-        if st.button("☀️" if _dark else "🌙", key="dark_toggle_btn", help="روز/شب", use_container_width=True):
-            data["settings"]["dark_mode"] = not _dark
-            st.session_state.data = data; save_all(data); st.rerun()
-    with c_logout:
-        if st.button("🚪", key="logout_btn", help="خروج", use_container_width=True):
-            st.session_state.authenticated = False
-            st.session_state.pop("data", None)
-            st.query_params.clear(); st.rerun()
-    st.divider()
-
-    rate, rate_date = get_current_usd_rate(data)
-    if rate:
-        bg_card = "#1f6feb" if _dark else "#3b82f6"
-        bg_grad = "linear-gradient(135deg, #1a2332 0%, #1f2937 100%)" if _dark else "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)"
-        title_col = "#8b949e" if _dark else "#6b7280"
-        value_col = "#58a6ff" if _dark else "#1e40af"
-        st.markdown(f"""
-        <div style="background: {bg_grad}; padding: 14px 16px; border-radius: 10px; border-right: 4px solid {bg_card}; margin-bottom: 12px; direction: rtl; text-align: right;">
-            <div style="font-size: 0.82rem; color: {title_col}; margin-bottom: 6px;">💵 نرخ فعلی دلار</div>
-            <div style="font-size: 1.5rem; font-weight: 700; color: {value_col};">{rate:,.0f}<span style="font-size: 0.95rem; color: {title_col};"> ریال</span></div>
-            <div style="font-size: 0.72rem; color: {title_col}; margin-top: 6px;">آخرین: {rate_date}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    else: st.info("💡 هنوز نرخی ثبت نشده.")
-
-    st.divider()
-    st.markdown("**💾 وضعیت ذخیره‌سازی**")
-    if data.get("last_saved"): st.caption(f"✅ آخرین ذخیره: {data.get('last_saved_jalali', '—')}")
-    else: st.caption("⚠️ هنوز ذخیره نشده")
-    local_ok = os.path.exists(DATA_FILE)
-    gh_status, gh_message = check_github_status(GITHUB_TOKEN, GITHUB_REPO)
-    c1, c2 = st.columns(2)
-    c1.caption(f"{'✅' if local_ok else '❌'} محلی")
-    c2.caption(f"{'✅' if gh_status == 'ok' else '❌'} GitHub")
-    if gh_status != "ok": st.error(f"⚠️ {gh_message}")
-    if st.button("💾 ذخیره فوری + تأیید", use_container_width=True, key="force_save"):
-        if save_all(data): st.rerun()
-
-    st.divider()
-    with st.expander("📥 پشتیبان / 📤 بازیابی", expanded=False):
-        st.download_button("📥 دانلود JSON", data=json.dumps(data, ensure_ascii=False, indent=2),
-                          file_name=f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                          mime="application/json", use_container_width=True)
-        uploaded = st.file_uploader("📤 آپلود JSON", type=["json"], key="uploader")
-        if uploaded is not None:
-            try:
-                imported = migrate_data(json.loads(uploaded.read().decode("utf-8")))
-                if st.button("✅ اعمال", use_container_width=True):
-                    st.session_state.data = imported; save_all(imported); st.rerun()
-            except Exception as e: st.error(f"فایل معتبر نیست: {e}")
-
-# ================== ناوبری ==================
-nav_options = ["overview", "journal", "usd", "gold", "monthly"] + [f"asset_{a['id']}" for a in assets] + ["settings"]
-nav_labels = {
-    "overview": f"{NAV_EMOJI['overview']} {NAV_LABELS['overview']}",
-    "journal": f"{NAV_EMOJI['journal']} {NAV_LABELS['journal']}",
-    "usd": f"{NAV_EMOJI['usd']} {NAV_LABELS['usd']}",
-    "gold": f"{NAV_EMOJI['gold']} {NAV_LABELS['gold']}",
-    "monthly": f"{NAV_EMOJI['monthly']} {NAV_LABELS['monthly']}",
-    "settings": f"{NAV_EMOJI['settings']} {NAV_LABELS['settings']}",
-}
-for a in assets: nav_labels[f"asset_{a['id']}"] = f"{asset_overview_emoji(a)} {a['name']}"
-
-if "nav_version" not in st.session_state: st.session_state.nav_version = 0
-if "pending_nav" in st.session_state:
-    pending = st.session_state.pending_nav
-    del st.session_state.pending_nav
-    if pending in nav_options:
-        st.session_state.nav_version += 1
-        st.session_state[f"nav_pills_v{st.session_state.nav_version}"] = pending
-
-_widget_key = f"nav_pills_v{st.session_state.nav_version}"
-if _widget_key not in st.session_state: st.session_state[_widget_key] = "overview"
-if st.session_state[_widget_key] not in nav_options: st.session_state[_widget_key] = "overview"
-
-if hasattr(st, "pills"):
-    selected = st.pills("ناوبری", options=nav_options, format_func=lambda x: nav_labels.get(x, x),
-                       selection_mode="single", label_visibility="collapsed", key=_widget_key)
-    if selected is None: selected = st.session_state[_widget_key]
-else:
-    selected = st.radio("ناوبری", options=nav_options, format_func=lambda x: nav_labels.get(x, x),
-                       horizontal=True, label_visibility="collapsed", key=_widget_key + "_radio")
-
-# ================== صفحه تنظیمات ==================
-def render_settings_page(data):
-    st.header("⚙️ تنظیمات")
-    settings = get_settings(data)
-    all_fonts = get_all_fonts(data)
-    dark = settings["dark_mode"]
-    t_font, t_nav, t_assets, t_emoji, t_lib, t_verify, t_storage = st.tabs([
-        "🔤 فونت", "🎨 آیکون منو", "📦 آیکون دارایی", "😀 ایموجی", "📚 کتابخانه", "🔍 تأیید ذخیره", "💾 وضعیت"])
-
-    with t_font:
-        st.subheader("🔤 فونت برنامه")
-        font_keys = list(all_fonts.keys())
-        cur_font = settings["font"] if settings["font"] in font_keys else "vazirmatn"
-        c1, c2 = st.columns([3, 1])
-        new_font = c1.selectbox("فونت", font_keys, index=font_keys.index(cur_font),
-                               format_func=lambda k: all_fonts[k]["name"] + (" (سفارشی)" if not all_fonts[k]["builtin"] else ""),
-                               key="font_select_v2")
-        if c2.button("💾 ذخیره فونت", use_container_width=True, key="apply_font_btn"):
-            data["settings"]["font"] = new_font
-            st.session_state.data = data; save_all(data); st.rerun()
-        preview_family = all_fonts[new_font]["family"]
-        bg_prev = "#161b22" if dark else "#f9fafb"; border_prev = "#30363d" if dark else "#3b82f6"
-        st.markdown(
-            f'<div style="padding:20px; border:2px solid {border_prev}; border-radius:10px; margin:16px 0; background:{bg_prev}; direction:rtl;">'
-            f'<div style="font-family:\'{preview_family}\', Tahoma; font-size:1.8rem;">داشبورد مالی — ۱۲۳۴۵</div>'
-            f'<div style="font-family:\'{preview_family}\', Tahoma; font-size:1.05rem;">متن نمونه: ۱۲۳۴۵۶۷۸۹۰ | 1234567890</div></div>',
-            unsafe_allow_html=True)
-        st.divider()
-        st.subheader("📤 بارگذاری فونت سفارشی")
-        st.caption("TTF, OTF, WOFF, WOFF2 — حداکثر ۱۰MB")
-        with st.form("upload_font_form", clear_on_submit=True):
-            uploaded_file = st.file_uploader("فایل", type=["ttf", "otf", "woff", "woff2"], key="custom_font_uploader")
-            display_name = st.text_input("نام نمایشی")
-            if st.form_submit_button("📤 بارگذاری", use_container_width=True):
-                if uploaded_file is None: st.error("فایل انتخاب کنید.")
-                elif uploaded_file.size > 10 * 1024 * 1024: st.error("حجم بیش از ۱۰MB.")
-                else:
-                    try:
-                        fb = uploaded_file.read()
-                        ext = uploaded_file.name.lower().rsplit(".", 1)[-1]
-                        fmap = {"ttf": "truetype", "otf": "opentype", "woff": "woff", "woff2": "woff2"}
-                        mmap = {"ttf": "font/ttf", "otf": "font/otf", "woff": "font/woff", "woff2": "font/woff2"}
-                        base_name = uploaded_file.name.rsplit(".", 1)[0]
-                        safe = re.sub(r"[^a-z0-9_]", "_", base_name.lower())[:40]
-                        fkey = f"custom_{safe}"; c = 1; orig = fkey
-                        existing = data["settings"].get("custom_fonts", {})
-                        while fkey in existing: c += 1; fkey = f"{orig}_{c}"
-                        data["settings"].setdefault("custom_fonts", {})[fkey] = {
-                            "display_name": (display_name.strip() or base_name)[:60],
-                            "data": base64.b64encode(fb).decode(),
-                            "format": fmap.get(ext, "truetype"), "mime": mmap.get(ext, "font/ttf"),
-                            "filename": uploaded_file.name, "size_bytes": len(fb),
-                            "uploaded_at": datetime.now().isoformat()}
-                        st.session_state.data = data; save_all(data)
-                        st.success("✅ بارگذاری شد."); st.rerun()
-                    except Exception as e: st.error(f"خطا: {e}")
-        custom_fonts = data["settings"].get("custom_fonts", {})
-        if custom_fonts:
-            st.divider(); st.subheader("📚 فونت‌های سفارشی")
-            for key, info in list(custom_fonts.items()):
-                with st.container(border=True):
-                    c1, c2, c3, c4 = st.columns([1, 3, 2, 1])
-                    c1.markdown(f'<div style="text-align:center; font-family:\'{key}\', Tahoma; font-size:2.2rem; color:#3b82f6;">آ</div>', unsafe_allow_html=True)
-                    c2.markdown(f"**{info.get('display_name', key)}**")
-                    c2.caption(f"{info.get('size_bytes', 0) // 1024:,} KB")
-                    c3.success("✅ فعال") if settings["font"] == key else c3.caption(f"`{key[:25]}`")
-                    if c4.button("🗑️", key=f"del_font_{key}"):
-                        del data["settings"]["custom_fonts"][key]
-                        if data["settings"]["font"] == key: data["settings"]["font"] = "vazirmatn"
-                        st.session_state.data = data; save_all(data); st.rerun()
-
-    with t_nav:
-        st.subheader("🎨 آیکون منو")
-        st.caption("روی هر آیکون کلیک کنید. ✅ = فعلی")
-        for nav_key in ["overview", "journal", "usd", "gold", "monthly", "settings"]:
-            cfg = settings["nav_icons"].get(nav_key, DEFAULT_NAV_ICONS[nav_key])
-            with st.container(border=True):
-                c1, c2 = st.columns([1, 4])
-                with c1:
-                    st.markdown(f'<div style="text-align:center; padding:10px;"><i class="fa-solid {cfg["icon"]}" style="color:{cfg["color"]}; font-size:2.5rem;"></i></div>', unsafe_allow_html=True)
-                with c2:
-                    st.markdown(f"**{NAV_LABELS[nav_key]}**")
-                    new_color = st.color_picker("رنگ", value=cfg["color"], key=f"color_nav_{nav_key}")
-                with st.expander("🖼️ انتخاب آیکون از گرید"):
-                    def _save_nav(icon_class, _k=nav_key):
-                        current_color = data["settings"]["nav_icons"].get(_k, DEFAULT_NAV_ICONS[_k])["color"]
-                        data["settings"]["nav_icons"][_k] = {"icon": icon_class, "color": current_color}
-                        st.session_state.data = data; save_all(data)
-                    _icon_grid_picker(f"nav_{nav_key}", cfg["icon"], _save_nav)
-                if st.button("💾 ذخیره رنگ", key=f"save_nav_{nav_key}", use_container_width=True):
-                    data["settings"]["nav_icons"][nav_key] = {"icon": cfg["icon"], "color": new_color}
-                    st.session_state.data = data; save_all(data); st.rerun()
-
-    with t_assets:
-        st.subheader("📦 آیکون دارایی‌ها")
-        if not assets: st.info("هنوز دارایی‌ای ثبت نشده.")
+        if mode == "درصد بازده":
+            y_values = [value["return_pct"] if value else 0 for value in values]
         else:
-            for a in assets:
-                cur_ic, cur_col = asset_icon(a), asset_color(a)
-                with st.container(border=True):
-                    c1, c2 = st.columns([1, 4])
-                    with c1:
-                        st.markdown(f'<div style="text-align:center; padding:10px;"><i class="fa-solid {cur_ic}" style="color:{cur_col}; font-size:2.5rem;"></i></div>', unsafe_allow_html=True)
-                    with c2:
-                        st.markdown(f"**{a['name']}**")
-                        new_color = st.color_picker("رنگ", value=cur_col, key=f"color_asset_{a['id']}")
-                    with st.expander("🖼️ انتخاب آیکون از گرید"):
-                        def _save_asset(icon_class, _id=a["id"]):
-                            for i, x in enumerate(data["assets"]):
-                                if x["id"] == _id: data["assets"][i]["icon"] = icon_class; break
-                            st.session_state.data = data; save_all(data)
-                        _icon_grid_picker(f"asset_{a['id']}", cur_ic, _save_asset)
-                    if st.button("💾 ذخیره رنگ", key=f"save_asset_{a['id']}", use_container_width=True):
-                        for i, x in enumerate(data["assets"]):
-                            if x["id"] == a["id"]: data["assets"][i]["color"] = new_color; break
-                        st.session_state.data = data; save_all(data); st.rerun()
+            y_values = [value["profit_irr"] if value else 0 for value in values]
+        rows.append({"نام": name, **{labels[index]: (f"{value['return_pct']:+.2f}٪" if value else "—") for index, value in enumerate(values)}})
+        figure.add_trace(go.Bar(name=name, x=labels, y=y_values))
+    if not rows:
+        st.info("برای این بازه بازدهی قابل محاسبه نیست.")
+        return
+    figure.update_layout(barmode="group", yaxis_title="درصد" if mode == "درصد بازده" else "ریال")
+    st.plotly_chart(chart_layout(figure, dark, 420), use_container_width=True)
+    render_table(pd.DataFrame(rows))
 
-    with t_emoji:
-        st.subheader("😀 ایموجی نمای کلی")
-        if not assets: st.info("هنوز دارایی‌ای ثبت نشده.")
-        else:
-            for a in assets:
-                with st.container(border=True):
-                    c1, c2 = st.columns([1, 4])
-                    with c1:
-                        st.markdown(f'<div style="text-align:center; font-size:2.8rem; padding:8px;">{asset_overview_emoji(a)}</div>', unsafe_allow_html=True)
-                    with c2:
-                        status = f"`{a['overview_emoji']}`" if a.get("overview_emoji") else "خودکار"
-                        st.markdown(f"**{a['name']}** — {status}")
-                    with st.expander("🖼️ انتخاب ایموجی"):
-                        def _save_em(v, _id=a["id"]):
-                            for i, x in enumerate(data["assets"]):
-                                if x["id"] == _id: data["assets"][i]["overview_emoji"] = v; break
-                            st.session_state.data = data; save_all(data)
-                        _emoji_grid_picker(f"emoji_{a['id']}", a.get("overview_emoji", ""), _save_em)
 
-    with t_lib:
-        icons = load_fa_icons()
-        st.caption(f"**{len(icons)}** آیکون FA")
-        s = st.text_input("🔍 جستجو", key="fa_lib_search")
-        filtered = [ic for ic in icons if s.lower() in ic["label"].lower() or s.lower() in ic["class"].lower()] if s else icons
-        display = filtered[:120]
-        for i in range(0, len(display), 8):
-            cols = st.columns(8)
-            for j, ic in enumerate(display[i:i + 8]):
-                with cols[j]:
-                    st.markdown(
-                        f'<div style="text-align:center; padding:8px; border:1px solid #e5e7eb; border-radius:6px;" title="{ic["class"]}">'
-                        f'<i class="fa-solid {ic["class"]}" style="font-size:1.4rem; color:#3b82f6;"></i>'
-                        f'<div style="font-size:0.6rem; color:#6b7280; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{ic["label"]}</div></div>',
-                        unsafe_allow_html=True)
-
-    with t_verify:
-        st.subheader("🔍 تأیید ذخیره")
-        if data.get("last_saved"): st.info(f"📅 آخرین: {data.get('last_saved_jalali', '—')}")
-        else: st.warning("هنوز ذخیره‌ای انجام نشده")
-        st.divider()
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if st.button("🔍 تأیید", use_container_width=True, key="verify_gh_btn"):
-                v_ok, v_msg, sha = verify_github_save(data)
-                (st.success if v_ok else st.error)(f"{'✅' if v_ok else '❌'} {v_msg}")
-        with col2:
-            if st.button("🔄 بارگذاری از GitHub", use_container_width=True, key="force_load_btn"):
-                gh = load_github_file()
-                if gh:
-                    st.session_state.data = migrate_data(gh)
-                    save_local_file(st.session_state.data)
-                    st.success("✅ بارگذاری شد"); st.rerun()
-                else: st.error("❌ ناموفق")
-        with col3:
-            if st.button("💾 ذخیره فوری", use_container_width=True, key="force_save_btn"):
-                if save_all(data): st.rerun()
-        st.divider()
-        gh = load_github_file()
-        if gh:
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("**حافظه:**")
-                st.caption(f"دارایی: {len(data.get('assets', []))}")
-                st.caption(f"صندوق طلا: {len(data.get('gold_funds', []))}")
-                st.caption(f"last_saved: {data.get('last_saved', '—')[:19]}")
-            with c2:
-                st.markdown("**GitHub:**")
-                st.caption(f"دارایی: {len(gh.get('assets', []))}")
-                st.caption(f"صندوق طلا: {len(gh.get('gold_funds', []))}")
-                st.caption(f"last_saved: {gh.get('last_saved', '—')[:19]}")
-            if data.get("last_saved") == gh.get("last_saved"): st.success("✅ یکسان")
-            else: st.warning("⚠️ متفاوت — ذخیره فوری بزنید")
-
-    with t_storage:
-        st.subheader("💾 وضعیت")
-        local_ok = os.path.exists(DATA_FILE)
-        if local_ok:
-            _sz = os.path.getsize(DATA_FILE); _sz_kb = _sz / 1024; _est_gz = _sz_kb * 0.1
-            if _sz_kb > 10240: st.error(f"⚠️ فایل {_sz_kb:,.0f} KB — بسیار بزرگ! GitHub gz: ~{_est_gz:,.0f} KB")
-            elif _sz_kb > 5120: st.warning(f"⚠️ فایل {_sz_kb:,.0f} KB — بزرگ. GitHub gz: ~{_est_gz:,.0f} KB")
-            else: st.info(f"📦 فایل محلی: **{_sz_kb:,.1f} KB** — GitHub gz تخمینی: **~{_est_gz:,.1f} KB**")
-        gh_status, gh_msg = check_github_status(GITHUB_TOKEN, GITHUB_REPO)
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("**📁 محلی**")
-            st.success(f"✅ ({os.path.getsize(DATA_FILE):,} بایت)") if local_ok else st.error("❌ یافت نشد")
-        with c2:
-            st.markdown("**☁️ GitHub (gzip)**")
-            st.success(f"✅ {gh_msg}") if gh_status == "ok" else st.error(f"❌ {gh_msg}")
-        st.divider()
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("دارایی‌ها", len(data.get("assets", [])))
-        c2.metric("رکوردها", sum(len(a.get("records", [])) for a in data.get("assets", [])))
-        c3.metric("نرخ دلار", len(data.get("usd_rates", [])))
-        c4.metric("صندوق طلا", len(data.get("gold_funds", [])))
-
-# ================== صفحه نمای کلی ==================
-if selected == "overview":
-    st.header("📊 نمای کلی دارایی‌ها")
-    rate, _ = get_current_usd_rate(data)
-    if not assets: st.info("هنوز دارایی‌ای ثبت نشده.")
-    else:
-        rows = []; total_usd = 0.0
-        for a in assets:
-            value, usd_val, rec = compute_asset_value(a, rate)
-            if usd_val is not None: total_usd += usd_val
-            rows.append({"دارایی": f"{asset_overview_emoji(a)} {a['name']}", "ارز": currency_label(a["currency"]),
-                         "تعداد": rec["quantity"] if rec else 0, "قیمت واحد": rec["unit_price"] if rec else 0,
-                         "ارزش": value, "معادل_دلاری": usd_val, "آخرین_تاریخ": rec["date_jalali"] if rec else "—"})
-        df = pd.DataFrame(rows)
-        c1, c2, c3 = st.columns(3)
-        c1.metric("💰 کل ارزش (دلاری)", f"${total_usd:,.2f}")
-        c2.metric("📁 دارایی‌ها", len(assets))
-        c3.metric("💵 نرخ دلار", f"{rate:,.0f} ریال" if rate else "ثبت نشده")
-        st.subheader("🥧 ترکیب")
-        pie_df = df.dropna(subset=["معادل_دلاری"]); pie_df = pie_df[pie_df["معادل_دلاری"] > 0]
-        if not pie_df.empty:
-            fig = px.pie(pie_df, values="معادل_دلاری", names="دارایی", hole=0.4,
-                        color_discrete_sequence=px.colors.qualitative.Set3)
-            fig.update_layout(font=dict(family="Vazirmatn, Tahoma", size=14, color="#e6edf3" if _dark else "#1f2937"),
-                             legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
-                             margin=dict(t=20, b=20, l=10, r=10),
-                             paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-                             plot_bgcolor="rgba(0,0,0,0)" if _dark else "white")
-            st.plotly_chart(fig, use_container_width=True)
-        st.subheader("📈 روند رشد")
-        timeline = build_portfolio_timeline(data)
-        if len(timeline) >= 2:
-            for metric_key, title, color in [("total_usd", "💵 ارزش به دلار", "#3b82f6"), ("total_irr", "🇮🇷 ارزش به ریال", "#10b981")]:
-                fig = px.line(timeline, x="date_jalali", y=metric_key, markers=True,
-                             labels={"date_jalali": "تاریخ", metric_key: title}, color_discrete_sequence=[color])
-                fig.update_traces(line=dict(width=3), marker=dict(size=7))
-                fig.update_layout(font=dict(family="Vazirmatn, Tahoma", size=13, color="#e6edf3" if _dark else "#1f2937"),
-                                 yaxis=dict(tickformat=",.0f"), xaxis=dict(title="تاریخ"),
-                                 margin=dict(t=30, b=20), hovermode="x unified",
-                                 paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-                                 plot_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-                                 title=dict(text=title, font=dict(size=14)))
-                st.plotly_chart(fig, use_container_width=True)
-            fu, lu = timeline["total_usd"].iloc[0], timeline["total_usd"].iloc[-1]
-            fi, li = timeline["total_irr"].iloc[0], timeline["total_irr"].iloc[-1]
-            g1, g2 = st.columns(2)
-            g1.metric("تغییر دلاری", f"${lu:,.2f}", delta=f"{lu-fu:+,.2f}")
-            g2.metric("تغییر ریالی", f"{li:,.0f}", delta=f"{li-fi:+,.0f}")
-        else: st.info("حداقل دو رکورد لازم است.")
-        st.subheader("📋 جدول دارایی‌ها")
-        disp = df.copy()
-        disp["تعداد"] = disp["تعداد"].apply(fmt_num)
-        disp["قیمت واحد"] = disp.apply(lambda r: f"{fmt_num(r['قیمت واحد'])} {r['ارز']}" if r['قیمت واحد'] else "—", axis=1)
-        disp["ارزش"] = disp.apply(lambda r: f"{fmt_num(r['ارزش'])} {r['ارز']}" if r['ارزش'] else "—", axis=1)
-        disp["معادل_دلاری"] = disp["معادل_دلاری"].apply(lambda x: f"${x:,.2f}" if pd.notna(x) else "—")
-        disp = disp[["دارایی", "تعداد", "قیمت واحد", "ارزش", "معادل_دلاری", "آخرین_تاریخ"]]
-        disp.columns = ["دارایی", "تعداد", "قیمت واحد", "ارزش", "معادل دلاری", "آخرین بروزرسانی"]
-        render_html_table(disp, dark=_dark)
-
-# ================== صفحه افزودن دارایی ==================
-elif selected == "journal":
-    st.header("+ افزودن دارایی")
-    all_icons = load_fa_icons()
-    all_classes = [ic["class"] for ic in all_icons]
-    labels_map = {ic["class"]: f'{ic["label"]} ({ic["class"]})' for ic in all_icons}
-    with st.container(border=True):
-        st.subheader("➕ ثبت دارایی جدید")
-        with st.form("add_asset_form", clear_on_submit=True):
-            c1, c2, c3 = st.columns([3, 2, 2])
-            name = c1.text_input("نام", placeholder="طلا، سهام...")
-            cur = c2.selectbox("ارز", ["IRR", "USD"], format_func=lambda x: "ریال" if x == "IRR" else "دلار")
-            init_icon = c3.selectbox("آیکون", all_classes,
-                                     index=all_classes.index("fa-coins") if "fa-coins" in all_classes else 0,
-                                     format_func=lambda c: labels_map.get(c, c), key="new_asset_icon")
-            init_color = st.color_picker("رنگ آیکون", value="#3b82f6", key="new_asset_color")
-            st.markdown("**📝 رکورد اولیه (اختیاری)**")
-            c6, c7, c8 = st.columns([2, 2, 3])
-            q0 = c6.number_input("تعداد", min_value=0.0, format="%.4f", step=1.0)
-            p0 = c7.number_input("قیمت واحد", min_value=0.0, format="%.2f", step=1000.0)
-            note0 = c8.text_input("توضیح")
-            if st.form_submit_button("💾 ایجاد", use_container_width=True):
-                if not name.strip(): st.error("نام را وارد کنید.")
-                else:
-                    aid = _short_id()
-                    records = []
-                    if q0 > 0 and p0 > 0:
-                        records.append({"id": aid + "_r0", "date_gregorian": datetime.now().isoformat(), "date_jalali": today_jalali_str(),
-                                       "quantity": q0, "unit_price": p0, "note": note0.strip() or "رکورد اولیه"})
-                    data.setdefault("assets", []).append({
-                        "id": aid, "name": name.strip(), "icon": init_icon, "color": init_color,
-                        "overview_emoji": "", "currency": cur,
-                        "created_at_gregorian": datetime.now().isoformat(), "created_at_jalali": today_jalali_str(),
-                        "records": records})
-                    st.session_state.data = data; save_all(data)
-                    st.session_state.pending_nav = f"asset_{aid}"; st.rerun()
-    if assets:
-        st.subheader("📝 لیست دارایی‌ها")
-        rate, _ = get_current_usd_rate(data)
-        for a in assets:
-            value, _, rec = compute_asset_value(a, rate)
-            with st.container(border=True):
-                c1, c2, c3, c4, c5 = st.columns([3, 2, 3, 2, 1])
-                c1.markdown(f'**<i class="fa-solid {asset_icon(a)}" style="color:{asset_color(a)};"></i> {a["name"]}**', unsafe_allow_html=True)
-                c2.caption(currency_label(a["currency"]))
-                c3.caption(f"آخرین: {rec['date_jalali'] if rec else '—'}")
-                c4.write(f"{fmt_num(value)} {currency_label(a['currency'])}" if value else "—")
-                if c5.button("🗑️", key=f"del_asset_{a['id']}"):
-                    data["assets"] = [x for x in data["assets"] if x["id"] != a["id"]]
-                    st.session_state.data = data; save_all(data)
-                    st.session_state.pending_nav = "overview"; st.rerun()
-
-# ================== صفحه دلار ==================
-elif selected == "usd":
-    st.header("💵 نرخ دلار")
-    st.caption(f"📅 {today_jalali_str()}")
-    with st.container(border=True):
-        st.subheader("➕ ثبت نرخ")
-        with st.form("usd_rate_form", clear_on_submit=True):
-            c1, c2 = st.columns([2, 3])
-            new_rate = c1.number_input("نرخ (ریال)", min_value=0, step=1000, format="%d")
-            note = c2.text_input("توضیح")
-            if st.form_submit_button("💾 ثبت", use_container_width=True):
-                if new_rate > 0:
-                    now = datetime.now().isoformat()
-                    data.setdefault("usd_rates", []).append({
-                        "id": _short_id(), "rate": new_rate, "note": note.strip(),
-                        "created_at": now, "created_at_jalali": today_jalali_str()})
-                    _u, _m = sync_usd_rates_to_gold_funds(data)
-                    if _u > 0: st.toast(f"🔄 {_u} رکورد صندوق طلا همگام شد", icon="✅")
-                    st.session_state.data = data; save_all(data); st.rerun()
-    rates = data.get("usd_rates", [])
-    if rates:
-        sorted_r = sorted(rates, key=lambda x: x.get("created_at", ""))
-        current, current_date = get_current_usd_rate(data)
-        c1, c2, c3 = st.columns(3)
-        c1.metric("نرخ فعلی", f"{current:,.0f} ریال")
-        c2.metric("تعداد", len(rates))
-        c3.metric("آخرین", current_date or "—")
-        st.subheader("📈 روند")
-        chart_df = pd.DataFrame(sorted_r); chart_df["تاریخ"] = chart_df["created_at_jalali"]
-        fig = px.line(chart_df, x="تاریخ", y="rate", markers=True, labels={"تاریخ": "تاریخ", "rate": "نرخ"})
-        fig.update_layout(font=dict(family="Vazirmatn, Tahoma", size=13, color="#e6edf3" if _dark else "#1f2937"),
-                         margin=dict(t=20, b=20),
-                         paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-                         plot_bgcolor="rgba(0,0,0,0)" if _dark else "white")
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.subheader("📋 تاریخچه")
-        for r in reversed(sorted_r):
-            with st.container(border=True):
-                c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 3, 3, 1, 1])
-                c1.markdown(f"**{r['rate']:,.0f} ریال**")
-                c2.caption(f"📅 {r.get('created_at_jalali', '—')}")
-                c3.caption(r.get("note", "—") or "—")
-                c4.caption(iso_to_jalali(r.get("created_at", ""), with_time=True))
-                if c5.button("✏️", key=f"edit_btn_rate_{r['id']}"):
-                    st.session_state[f"edit_open_rate_{r['id']}"] = not st.session_state.get(f"edit_open_rate_{r['id']}", False)
-                if c6.button("🗑️", key=f"delrate_{r['id']}"):
-                    data["usd_rates"] = [x for x in data["usd_rates"] if x["id"] != r["id"]]
-                    _u, _m = sync_usd_rates_to_gold_funds(data)
-                    if _u > 0: st.toast(f"🔄 {_u} رکورد صندوق طلا بازمحاسبه شد", icon="✅")
-                    if _m > 0: st.warning(f"⚠️ {_m} رکورد صندوق طلا بدون نرخ معتبر")
-                    st.session_state.data = data; save_all(data); st.rerun()
-                if st.session_state.get(f"edit_open_rate_{r['id']}", False):
-                    vk = f"v_rate_{r['id']}"
-                    fk = f"edit_rate_{r['id']}_v{get_version(vk)}"
-                    with st.form(fk):
-                        ec1, ec2 = st.columns([2, 3])
-                        er_date = ec1.text_input("تاریخ", value=r.get("created_at_jalali", today_jalali_str()))
-                        er_rate = ec2.number_input("نرخ", value=int(r["rate"]), min_value=1, step=1000, format="%d")
-                        er_note = st.text_input("توضیح", value=r.get("note", ""))
-                        if st.form_submit_button("💾 ذخیره", use_container_width=True):
-                            jd = parse_jalali(er_date)
-                            if jd and er_rate > 0:
-                                tp = r["created_at"][11:16] if len(r.get("created_at", "")) >= 16 else "00:00"
-                                giso = jalali_to_gregorian_iso(jd, tp)
-                                for i, x in enumerate(data["usd_rates"]):
-                                    if x["id"] == r["id"]:
-                                        data["usd_rates"][i] = {"id": r["id"], "rate": er_rate, "note": er_note.strip(),
-                                                               "created_at": giso, "created_at_jalali": jd.strftime("%Y/%m/%d")}
-                                        break
-                                _u, _m = sync_usd_rates_to_gold_funds(data)
-                                if _u > 0: st.toast(f"🔄 {_u} رکورد صندوق طلا همگام شد", icon="✅")
-                                if _m > 0: st.warning(f"⚠️ {_m} رکورد بدون نرخ معتبر")
-                                st.session_state.data = data
-                                st.session_state[f"edit_open_rate_{r['id']}"] = False
-                                bump_version(vk); save_all(data); st.rerun()
-
-# ================== 🥇 صفحه صندوق‌های طلا ==================
-elif selected == "gold":
-    st.header("🥇 صندوق‌های طلا")
-    st.caption(f"📅 {today_jalali_str()}")
-
-    st.markdown('<style>[data-testid="stMainBlockContainer"] [data-testid="stMetricValue"],[data-testid="stMainBlockContainer"] [data-testid="stMetricValue"] *,[data-testid="stMainBlockContainer"] [data-testid="stMetricValue"] p{font-size:1.2rem!important;line-height:1.2!important;font-weight:600!important;}[data-testid="stMainBlockContainer"] [data-testid="stMetricLabel"],[data-testid="stMainBlockContainer"] [data-testid="stMetricLabel"] *,[data-testid="stMainBlockContainer"] [data-testid="stMetricLabel"] p{font-size:0.8rem!important;font-weight:500!important;}[data-testid="stMainBlockContainer"] [data-testid="stMetricDelta"],[data-testid="stMainBlockContainer"] [data-testid="stMetricDelta"] *,[data-testid="stMainBlockContainer"] [data-testid="stMetricDelta"] p{font-size:0.72rem!important;}</style>', unsafe_allow_html=True)
-
-    _sync_u, _sync_m = sync_usd_rates_to_gold_funds(data)
-    if _sync_u > 0:
-        st.session_state.data = data
-    if _sync_m > 0:
-        st.warning(f"⚠️ {_sync_m} رکورد تاریخشان قبل از اولین نرخ دلار ثبت شده است.")
-
-    with st.container(border=True):
-        st.subheader("➕ افزودن صندوق جدید")
-        with st.form("add_gold_fund_form", clear_on_submit=True):
-            c1, c2 = st.columns([3, 2])
-            fund_name = c1.text_input("نام صندوق", placeholder="طلا، عیار، لوتوس، ...")
-            fund_icon = c2.text_input("ایموجی", value="🥇", max_chars=4)
-            if st.form_submit_button("💾 ایجاد صندوق", use_container_width=True):
-                if not fund_name.strip():
-                    st.error("نام صندوق را وارد کنید.")
-                else:
-                    fid = _short_id()
-                    data.setdefault("gold_funds", []).append({
-                        "id": fid, "name": fund_name.strip(),
-                        "icon": (fund_icon.strip() or "🥇")[:4],
-                        "created_at": datetime.now().isoformat(), "records": []})
-                    st.session_state.data = data
-                    save_all(data)
-                    st.rerun()
-
-    gold_funds = data.get("gold_funds", [])
-    usd_rate_current, usd_rate_date = get_current_usd_rate(data)
-
-    if not gold_funds:
-        st.info("هنوز صندوقی اضافه نشده.")
-    else:
-        for fund in gold_funds:
-            st.markdown(f"### {fund.get('icon', '🥇')} {fund['name']}")
-            records = fund.get("records", [])
-
-            _trap = dollar_trap_analysis(fund, days=30)
-            if _trap and _trap["gap"] > 10:
-                st.warning(f"⚠️ **هشدار تله دلار** — در {_trap['days']} روز گذشته ({_trap['older_date']} تا {_trap['last_date']}): نرخ دلار **{_trap['usd_change']:+.1f}%**، انس طلا **{_trap['ounce_change']:+.1f}%**، شکاف **{_trap['gap']:+.1f}%**. 🔴 اگر الان صندوق را بفروشی و دلار نخری، سود دلاری‌ات از بین می‌رود.")
-
-            analytics = gold_fund_analytics(fund)
-            prices = [r["unit_price"] for r in records if r.get("unit_price", 0) > 0]
-            units_list = []
-            for r in records:
-                if r.get("unit_price", 0) > 0 and r.get("usd_rate_used", 0) > 0 and r.get("ounce_price_usd", 0) > 0:
-                    units_list.append((r["ounce_price_usd"] * r["usd_rate_used"]) / r["unit_price"])
-
-            if prices:
-                st.markdown("**💰 قیمت واحد صندوق**")
-                mc1, mc2, mc3, mc4 = st.columns(4)
-                mc1.metric("📉 کمترین قیمت", f"{min(prices):,.0f} ریال")
-                mc2.metric("📊 میانگین قیمت", f"{sum(prices) / len(prices):,.0f} ریال")
-                mc3.metric("📈 بیشترین قیمت", f"{max(prices):,.0f} ریال")
-                mc4.metric("📋 تعداد رکورد", len(records))
-
-                if units_list:
-                    st.markdown("**📦 تعداد واحد مورد نیاز (برای یک انس)**")
-                    u1, u2, u3, u4 = st.columns(4)
-                    u1.metric("📉 کمترین واحد", f"{min(units_list):,.0f}")
-                    u2.metric("📊 میانگین واحد", f"{sum(units_list) / len(units_list):,.0f}")
-                    u3.metric("📈 بیشترین واحد", f"{max(units_list):,.0f}")
-                    avg_price = sum(prices) / len(prices)
-                    avg_units = sum(units_list) / len(units_list)
-                    u4.metric("📊 میانگین ارزش", f"{avg_units * avg_price:,.0f} ریال", help="میانگین واحد × میانگین قیمت")
-
-                if analytics and analytics[-1]["usd_equivalent"] is not None:
-                    st.markdown("**💵 تحلیل دلاری**")
-                    a1, a2, a3, a4 = st.columns(4)
-                    last_a = analytics[-1]
-                    first_usd = analytics[0]["usd_equivalent"]
-                    a1.metric("💵 معادل دلاری فعلی", f"${last_a['usd_equivalent']:,.4f}")
-                    if last_a["usd_return_pct"] is not None:
-                        a2.metric("📈 بازده دلاری از خرید", f"{last_a['usd_return_pct']:+.1f}%",
-                                  delta=f"${last_a['usd_equivalent'] - first_usd:+.4f}" if first_usd else None)
-                    if last_a["gram_per_unit"]:
-                        avg_gram = sum([r["gram_per_unit"] for r in analytics if r["gram_per_unit"]]) / len([r for r in analytics if r["gram_per_unit"]])
-                        premium_pct = (last_a["gram_per_unit"] / avg_gram - 1) * 100 if avg_gram else 0
-                        a3.metric("⚖️ گرم/واحد", f"{last_a['gram_per_unit']*1000:.3f} mg",
-                                  delta=f"{premium_pct:+.1f}% vs avg")
-                    a4.metric("📊 سیگنال انس", ounce_signal(fund).split("—")[0].strip())
-                    st.caption(f"**سیگنال فعلی:** {ounce_signal(fund)}")
-            else:
-                st.caption("هنوز رکوردی ثبت نشده.")
-
-            if len(records) >= 1:
-                with st.expander("🧮 ماشین‌حساب آربیتراژ دلاری"):
-                    if usd_rate_current is None:
-                        st.warning("ابتدا نرخ دلار را در صفحه «💵 دلار» ثبت کنید.")
-                    else:
-                        st.caption(f"نرخ دلار فعلی: **{usd_rate_current:,.0f} ریال**")
-                        calc_c1, calc_c2, calc_c3, calc_c4 = st.columns(4)
-                        calc_units = calc_c1.number_input("تعداد واحد", min_value=0.0, value=1.0, step=1.0, key=f"calc_units_{fund['id']}")
-                        calc_sell = calc_c2.number_input("قیمت فروش (ریال)", min_value=0.0, value=float(records[-1]["unit_price"]), step=1000.0, key=f"calc_sell_{fund['id']}")
-                        calc_rebuy_rate = calc_c3.number_input("نرخ دلار پیش‌بینی", min_value=0.0, value=float(usd_rate_current), step=1000.0, key=f"calc_rebuy_rate_{fund['id']}")
-                        calc_rebuy = calc_c4.number_input("قیمت خرید مجدد (ریال)", min_value=0.0, value=float(records[-1]["unit_price"]), step=1000.0, key=f"calc_rebuy_{fund['id']}")
-                        fee_c1, fee_c2, fee_c3 = st.columns(3)
-                        fee_sell_pct = fee_c1.number_input("کارمزد فروش صندوق (%)", min_value=0.0, value=0.5, step=0.1, key=f"fee_sell_{fund['id']}")
-                        fee_usd_pct = fee_c2.number_input("اسپرد دلار (% هر طرف)", min_value=0.0, value=1.0, step=0.1, key=f"fee_usd_{fund['id']}")
-                        fee_buy_pct = fee_c3.number_input("کارمزد خرید صندوق (%)", min_value=0.0, value=0.5, step=0.1, key=f"fee_buy_{fund['id']}")
-                        if calc_units > 0 and calc_sell > 0 and calc_rebuy_rate > 0 and calc_rebuy > 0:
-                            gross_irr = calc_units * calc_sell * (1 - fee_sell_pct / 100)
-                            dollars = gross_irr / (calc_rebuy_rate * (1 + fee_usd_pct / 100))
-                            irr_back = dollars * calc_rebuy_rate * (1 - fee_usd_pct / 100)
-                            new_units = (irr_back / calc_rebuy) * (1 - fee_buy_pct / 100)
-                            net_units = new_units - calc_units
-                            net_irr = net_units * calc_rebuy
-                            st.divider()
-                            r1, r2, r3 = st.columns(3)
-                            r1.metric("💵 دلار به‌دست‌آمده", f"${dollars:,.4f}")
-                            r2.metric("📦 واحد پس از خرید مجدد", f"{new_units:,.4f}")
-                            if net_units > 0:
-                                r3.metric("✅ سود خالص", f"+{net_units:,.4f} واحد", delta=f"{net_irr:+,.0f} ریال")
-                                st.success(f"✅ سودآور: **{net_units:,.4f} واحد** بیشتر")
-                            else:
-                                r3.metric("❌ ضرر خالص", f"{net_units:,.4f} واحد", delta=f"{net_irr:+,.0f} ریال")
-                                st.error(f"❌ ضرر: {abs(net_units):,.4f} واحد")
-                            if 0 < net_units < calc_units * 0.05:
-                                st.info("💡 سود کمتر از ۵٪ — ارزش ریسک ندارد.")
-
-            with st.expander(f"➕ افزودن رکورد برای {fund['name']}", expanded=(len(records) == 0)):
-                if usd_rate_current is None:
-                    st.warning("⚠️ ابتدا نرخ دلار را در صفحه «💵 دلار» ثبت کنید.")
-                else:
-                    st.caption(f"نرخ دلار فعلی: **{usd_rate_current:,.0f} ریال** ({usd_rate_date})")
-                    cg1, cg2, cg3 = st.columns([2, 2, 2])
-                    g_date = cg1.text_input("تاریخ (شمسی)", value=today_jalali_str(), key=f"gdate_{fund['id']}")
-                    g_price = cg2.number_input("قیمت واحد (ریال)", min_value=0.0, format="%.0f", step=1000.0, key=f"gprice_{fund['id']}")
-                    g_ounce = cg3.number_input("انس طلا (دلار)", min_value=0.0, format="%.2f", step=1.0, value=2000.0, key=f"gounce_{fund['id']}")
-                    g_note = st.text_input("توضیح (اختیاری)", key=f"gnote_{fund['id']}")
-                    if g_price > 0 and g_ounce > 0:
-                        units_needed = (g_ounce * usd_rate_current) / g_price
-                        usd_equiv = g_price / usd_rate_current if usd_rate_current > 0 else 0
-                        st.success(f"📊 **واحد برای ۱ انس:** {units_needed:,.0f} واحد | **معادل دلاری:** ${usd_equiv:.4f}")
-                    if st.button("💾 ثبت رکورد", key=f"gsave_{fund['id']}", use_container_width=True):
-                        jd = parse_jalali(g_date)
-                        if jd is None:
-                            st.error("تاریخ نامعتبر.")
-                        elif g_price <= 0 or g_ounce <= 0:
-                            st.error("مقادیر باید > 0 باشند.")
-                        else:
-                            giso = jalali_to_gregorian_iso(jd, datetime.now().strftime("%H:%M"))
-                            fund.setdefault("records", []).append({
-                                "id": _short_id(), "date_gregorian": giso,
-                                "date_jalali": jd.strftime("%Y/%m/%d"),
-                                "unit_price": g_price, "ounce_price_usd": g_ounce,
-                                "usd_rate_used": usd_rate_current, "note": g_note.strip()})
-                            sync_usd_rates_to_gold_funds(data)
-                            st.session_state.data = data
-                            save_all(data)
-                            for k in [f"gdate_{fund['id']}", f"gprice_{fund['id']}", f"gounce_{fund['id']}", f"gnote_{fund['id']}"]:
-                                st.session_state.pop(k, None)
-                            st.rerun()
-
-            if len(records) >= 2 and analytics:
-                st.markdown("**📈 نمودار مقایسه‌ای (نرمال‌شده به ۱۰۰)**")
-                valid = [a for a in analytics if a["usd_equivalent"] is not None and a["record"].get("ounce_price_usd", 0) > 0]
-                if len(valid) >= 2:
-                    base_irr = valid[0]["record"]["unit_price"]
-                    base_usd = valid[0]["usd_equivalent"]
-                    base_ounce = valid[0]["record"]["ounce_price_usd"]
-                    dates = [a["record"]["date_jalali"] for a in valid]
-                    irr_index = [(a["record"]["unit_price"] / base_irr) * 100 for a in valid]
-                    usd_index = [(a["usd_equivalent"] / base_usd) * 100 for a in valid]
-                    ounce_index = [(a["record"]["ounce_price_usd"] / base_ounce) * 100 for a in valid]
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=dates, y=irr_index, mode="lines+markers", name="قیمت ریالی",
-                                             line=dict(color="#3b82f6", width=3), marker=dict(size=7)))
-                    fig.add_trace(go.Scatter(x=dates, y=usd_index, mode="lines+markers", name="معادل دلاری",
-                                             line=dict(color="#10b981", width=3), marker=dict(size=7)))
-                    fig.add_trace(go.Scatter(x=dates, y=ounce_index, mode="lines+markers", name="انس طلا",
-                                             line=dict(color="#f59e0b", width=2, dash="dot"), marker=dict(size=6)))
-                    fig.update_layout(
-                        font=dict(family="Vazirmatn, Tahoma", size=13, color="#e6edf3" if _dark else "#1f2937"),
-                        yaxis=dict(title="شاخص (پایه=۱۰۰)", tickformat=".0f"),
-                        xaxis=dict(title="تاریخ"), margin=dict(t=30, b=20),
-                        hovermode="x unified",
-                        paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-                        plot_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-                        legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5))
-                    st.plotly_chart(fig, use_container_width=True)
-                    last_irr = irr_index[-1]
-                    last_usd = usd_index[-1]
-                    if last_irr > 105 and last_usd < 95:
-                        st.error(f"🔴 **تله دلار:** ریالی {last_irr-100:+.1f}% ولی دلاری {last_usd-100:+.1f}%")
-                    elif last_usd > 105:
-                        st.success(f"🟢 **سود دلاری واقعی:** {last_usd-100:+.1f}%")
-
-            if records and analytics:
-                st.markdown("**📋 تاریخچه رکوردها**")
-                hc = st.columns([2, 1.6, 1.6, 1.8, 1.8, 1.6, 1.6, 0.7, 0.7])
-                hc[0].caption("**تاریخ**")
-                hc[1].caption("**قیمت واحد**")
-                hc[2].caption("**دلاری**")
-                hc[3].caption("**انس**")
-                hc[4].caption("**دلار**")
-                hc[5].caption("**واحد/انس**")
-                hc[6].caption("**بازده دلاری**")
-                hc[7].caption("**✏️**")
-                hc[8].caption("**🗑️**")
-                st.divider()
-
-                for a in list(reversed(analytics)):
-                    r = a["record"]
-                    usd_eq = a["usd_equivalent"]
-                    usd_ret = a["usd_return_pct"]
-                    ounce_ch = a["ounce_change_pct"]
-                    usd_ch = a["usd_change_pct"]
-
-                    units_for_ounce = 0
-                    if r.get("unit_price", 0) > 0 and r.get("usd_rate_used", 0) > 0:
-                        units_for_ounce = (r["ounce_price_usd"] * r["usd_rate_used"]) / r["unit_price"]
-
-                    rc = st.columns([2, 1.6, 1.6, 1.8, 1.8, 1.6, 1.6, 0.7, 0.7])
-                    rc[0].markdown(f"📅 {r['date_jalali']}")
-                    rc[1].markdown(f"{r['unit_price']:,.0f}")
-                    rc[2].markdown(f"${usd_eq:,.4f}" if usd_eq else "—")
-
-                    ounce_base = f"${r['ounce_price_usd']:,.0f}"
-                    if ounce_ch is not None and abs(ounce_ch) >= 0.05:
-                        color = "#10b981" if ounce_ch > 0 else "#ef4444"
-                        arrow = "↑" if ounce_ch > 0 else "↓"
-                        rc[3].markdown(f'{ounce_base} <span style="color:{color};font-size:0.85em;">{arrow}{abs(ounce_ch):.1f}%</span>', unsafe_allow_html=True)
-                    else:
-                        rc[3].markdown(ounce_base)
-
-                    usd_base = f"{r.get('usd_rate_used', 0):,.0f}"
-                    if usd_ch is not None and abs(usd_ch) >= 0.05:
-                        color = "#10b981" if usd_ch > 0 else "#ef4444"
-                        arrow = "↑" if usd_ch > 0 else "↓"
-                        rc[4].markdown(f'{usd_base} <span style="color:{color};font-size:0.85em;">{arrow}{abs(usd_ch):.1f}%</span>', unsafe_allow_html=True)
-                    else:
-                        rc[4].markdown(usd_base)
-
-                    rc[5].markdown(f"**{units_for_ounce:,.0f}**" if units_for_ounce else "—")
-
-                    if usd_ret is not None and abs(usd_ret) >= 0.05:
-                        color = "#10b981" if usd_ret > 0 else "#ef4444"
-                        arrow = "↑" if usd_ret > 0 else "↓"
-                        rc[6].markdown(f'<span style="color:{color};font-weight:700;">{arrow}{abs(usd_ret):.1f}%</span>', unsafe_allow_html=True)
-                    else:
-                        rc[6].markdown("—")
-
-                    if rc[7].button("✏️", key=f"edit_btn_gold_{fund['id']}_{r['id']}"):
-                        st.session_state[f"edit_open_gold_{r['id']}"] = not st.session_state.get(f"edit_open_gold_{r['id']}", False)
-                    if rc[8].button("🗑️", key=f"del_gold_rec_{fund['id']}_{r['id']}"):
-                        fund["records"] = [x for x in fund["records"] if x["id"] != r["id"]]
-                        st.session_state.data = data
-                        save_all(data)
-                        st.rerun()
-
-                    if st.session_state.get(f"edit_open_gold_{r['id']}", False):
-                        gvk = f"v_gold_rec_{r['id']}"
-                        gfk = f"edit_gold_rec_{r['id']}_v{get_version(gvk)}"
-                        with st.form(gfk):
-                            ec1, ec2, ec3 = st.columns([2, 2, 2])
-                            er_date = ec1.text_input("تاریخ", value=r["date_jalali"], key=f"g_ed_date_{r['id']}")
-                            er_price = ec2.number_input("قیمت واحد", value=float(r["unit_price"]), min_value=0.0, format="%.0f", step=1000.0, key=f"g_ed_price_{r['id']}")
-                            er_ounce = ec3.number_input("انس (دلار)", value=float(r["ounce_price_usd"]), min_value=0.0, format="%.2f", step=1.0, key=f"g_ed_ounce_{r['id']}")
-                            ec4, ec5 = st.columns([2, 3])
-                            er_rate = ec4.number_input("نرخ دلار", value=float(r.get("usd_rate_used", 0)), min_value=0.0, format="%.0f", step=1000.0, key=f"g_ed_rate_{r['id']}")
-                            er_note = ec5.text_input("توضیح", value=r.get("note", ""), key=f"g_ed_note_{r['id']}")
-                            if er_price > 0 and er_ounce > 0 and er_rate > 0:
-                                new_u = (er_ounce * er_rate) / er_price
-                                st.info(f"📊 واحد برای ۱ انس: **{new_u:,.0f}** واحد")
-                            if st.form_submit_button("💾 ذخیره", use_container_width=True):
-                                jd = parse_jalali(er_date)
-                                if jd and er_price > 0 and er_ounce > 0 and er_rate > 0:
-                                    tp = r["date_gregorian"][11:16] if len(r.get("date_gregorian", "")) >= 16 else "00:00"
-                                    giso = jalali_to_gregorian_iso(jd, tp)
-                                    for i, x in enumerate(fund["records"]):
-                                        if x["id"] == r["id"]:
-                                            fund["records"][i] = {"id": r["id"], "date_gregorian": giso,
-                                                                  "date_jalali": jd.strftime("%Y/%m/%d"),
-                                                                  "unit_price": er_price, "ounce_price_usd": er_ounce,
-                                                                  "usd_rate_used": er_rate, "note": er_note.strip()}
-                                            break
-                                    st.session_state.data = data
-                                    st.session_state[f"edit_open_gold_{r['id']}"] = False
-                                    bump_version(gvk)
-                                    save_all(data)
-                                    st.rerun()
-                                else:
-                                    st.error("مقادیر معتبر وارد کنید.")
-                    st.divider()
-
-            with st.expander(f"⚠️ حذف صندوق {fund['name']}"):
-                _fi = next((i for i, x in enumerate(data["gold_funds"]) if x["id"] == fund["id"]), 0)
-                confirm = st.checkbox("مطمئنم", key=f"confirm_del_gold_{fund['id']}_{_fi}")
-                if st.button("🗑️ حذف صندوق", disabled=not confirm, key=f"del_gold_fund_{fund['id']}_{_fi}", use_container_width=True):
-                    data["gold_funds"] = [x for x in data["gold_funds"] if x["id"] != fund["id"]]
-                    st.session_state.data = data
-                    save_all(data)
-                    st.rerun()
-            st.divider()
-
-# ================== 📅 صفحه بازده ماهانه ==================
-elif selected == "monthly":
-    render_monthly_returns_page(data)
-
-# ================== صفحه تنظیمات ==================
-elif selected == "settings":
-    render_settings_page(data)
-
-# ================== صفحه دارایی اختصاصی ==================
-elif selected.startswith("asset_"):
-    aid = selected.replace("asset_", "")
-    asset = next((a for a in assets if a["id"] == aid), None)
-    if asset is None:
-        st.error("یافت نشد.")
-    else:
-        rate, _ = get_current_usd_rate(data)
-        value, usd_val, rec = compute_asset_value(asset, rate)
-        st.markdown(f'<h1 style="text-align:right;"><i class="fa-solid {asset_icon(asset)}" style="color:{asset_color(asset)};"></i> {asset["name"]}</h1>', unsafe_allow_html=True)
-        st.caption(f"ارز: **{currency_label(asset['currency'])}** | ایجاد: {asset.get('created_at_jalali', '—')}")
-
-        avk = f"v_asset_{asset['id']}"
-        afk = f"edit_asset_{asset['id']}_v{get_version(avk)}"
-        with st.expander("⚙️ ویرایش نام و ارز"):
-            with st.form(afk):
-                ac1, ac2 = st.columns([3, 2])
-                new_name = ac1.text_input("نام", value=asset["name"])
-                new_cur = ac2.selectbox("ارز", ["IRR", "USD"], index=0 if asset["currency"] == "IRR" else 1,
-                                       format_func=lambda x: "ریال" if x == "IRR" else "دلار")
-                if st.form_submit_button("💾 ذخیره", use_container_width=True):
-                    if new_name.strip():
-                        for i, a in enumerate(data["assets"]):
-                            if a["id"] == asset["id"]:
-                                data["assets"][i]["name"] = new_name.strip()
-                                data["assets"][i]["currency"] = new_cur
-                                break
-                        st.session_state.data = data
-                        bump_version(avk)
-                        save_all(data)
-                        st.rerun()
-
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("📦 تعداد", fmt_num(rec["quantity"]) if rec else "—")
-        c2.metric("💲 قیمت هر واحد", f"{fmt_num(rec['unit_price'])} {currency_label(asset['currency'])}" if rec else "—")
-        c3.metric("💰 ارزش کل", f"{fmt_num(value)} {currency_label(asset['currency'])}" if rec else "—")
-        c4.metric("💵 ارزش دلاری", f"${usd_val:,.2f}" if usd_val is not None else "—")
-
-        with st.container(border=True):
-            st.subheader("➕ ثبت رکورد روزانه")
-            with st.form(f"add_record_{asset['id']}", clear_on_submit=True):
-                c1, c2, c3, c4 = st.columns([2, 2, 2, 3])
-                dtext = c1.text_input("تاریخ", value=today_jalali_str())
-                qty = c2.number_input("تعداد", min_value=0.0, format="%.4f", step=1.0)
-                price = c3.number_input(f"قیمت هر واحد ({currency_label(asset['currency'])})", min_value=0.0, format="%.2f", step=1000.0)
-                note = c4.text_input("توضیح")
-                if st.form_submit_button("💾 ثبت", use_container_width=True):
-                    jd = parse_jalali(dtext)
-                    if jd and qty > 0 and price > 0:
-                        giso = jalali_to_gregorian_iso(jd, datetime.now().strftime("%H:%M"))
-                        asset.setdefault("records", []).append({
-                            "id": _short_id(), "date_gregorian": giso,
-                            "date_jalali": jd.strftime("%Y/%m/%d"),
-                            "quantity": qty, "unit_price": price, "note": note.strip()})
-                        st.session_state.data = data
-                        save_all(data)
-                        st.rerun()
-                    else:
-                        st.error("مقادیر معتبر وارد کنید.")
-
-        records = sorted(asset.get("records", []), key=lambda r: r.get("date_gregorian", ""))
-
-        if len(records) >= 2:
-            st.subheader("📈 روند ارزش کل")
-            st.caption("⚠️ این نمودار ارزش کل را نشان می‌دهد (تعداد × قیمت) — با خرید/فروش شما بالا/پایین می‌رود")
-            chart_rows = [{"تاریخ": r["date_jalali"], "ارزش": r["quantity"] * r["unit_price"]} for r in records]
-            cdf = pd.DataFrame(chart_rows)
-            fig = px.line(cdf, x="تاریخ", y="ارزش", markers=True,
-                         labels={"تاریخ": "تاریخ", "ارزش": currency_label(asset['currency'])})
-            fig.update_layout(font=dict(family="Vazirmatn, Tahoma", size=13, color="#e6edf3" if _dark else "#1f2937"),
-                             margin=dict(t=20, b=20),
-                             paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-                             plot_bgcolor="rgba(0,0,0,0)" if _dark else "white")
-            st.plotly_chart(fig, use_container_width=True)
-
-        if len(records) >= 2:
-            usd_rates_sorted = sorted(data.get("usd_rates", []), key=lambda x: x.get("created_at", ""))
-            comp_rows = []
-            for r in records:
-                rec_date = r.get("date_gregorian", "")[:10]
-                rate_at = None
-                for ur in usd_rates_sorted:
-                    if ur.get("created_at", "")[:10] <= rec_date:
-                        rate_at = ur["rate"]
-                    else:
-                        break
-                if rate_at is None or rate_at <= 0:
-                    continue
-                unit_price_native = r["unit_price"]
-                if asset["currency"] == "IRR":
-                    unit_price_irr = unit_price_native
-                    unit_price_usd = unit_price_native / rate_at
-                else:
-                    unit_price_usd = unit_price_native
-                    unit_price_irr = unit_price_native * rate_at
-                comp_rows.append({
-                    "date_jalali": r["date_jalali"],
-                    "record": r,
-                    "unit_price_irr": unit_price_irr,
-                    "unit_price_usd": unit_price_usd,
-                    "usd_rate": rate_at,
-                    "quantity": r["quantity"],
-                    "unit_price_native": unit_price_native
-                })
-
-            if len(comp_rows) >= 2:
-                base_irr = comp_rows[0]["unit_price_irr"]
-                base_usd = comp_rows[0]["unit_price_usd"]
-                base_rate = comp_rows[0]["usd_rate"]
-
-                dates = [row["date_jalali"] for row in comp_rows]
-                irr_index = [(row["unit_price_irr"] / base_irr) * 100 for row in comp_rows]
-                usd_index = [(row["unit_price_usd"] / base_usd) * 100 for row in comp_rows]
-                rate_index = [(row["usd_rate"] / base_rate) * 100 for row in comp_rows]
-
-                st.subheader("📈 نمودار مقایسه‌ای «قیمت هر واحد» (نرمال‌شده به ۱۰۰)")
-                st.caption("🔵 قیمت هر واحد به ریال | 🟢 قیمت هر واحد به دلار | 🟠 نرخ دلار (مرجع) — مستقل از تعداد سهام شما")
-
-                fig_cmp = go.Figure()
-                fig_cmp.add_trace(go.Scatter(x=dates, y=irr_index, mode="lines+markers", name="قیمت واحد (ریال)",
-                                             line=dict(color="#3b82f6", width=3), marker=dict(size=7)))
-                fig_cmp.add_trace(go.Scatter(x=dates, y=usd_index, mode="lines+markers", name="قیمت واحد (دلار)",
-                                             line=dict(color="#10b981", width=3), marker=dict(size=7)))
-                fig_cmp.add_trace(go.Scatter(x=dates, y=rate_index, mode="lines+markers", name="نرخ دلار",
-                                             line=dict(color="#f59e0b", width=2, dash="dot"), marker=dict(size=6)))
-                fig_cmp.update_layout(
-                    font=dict(family="Vazirmatn, Tahoma", size=13, color="#e6edf3" if _dark else "#1f2937"),
-                    yaxis=dict(title="شاخص قیمت هر واحد (پایه=۱۰۰)", tickformat=".0f"),
-                    xaxis=dict(title="تاریخ"), margin=dict(t=30, b=20),
-                    hovermode="x unified",
-                    paper_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-                    plot_bgcolor="rgba(0,0,0,0)" if _dark else "white",
-                    legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5))
-                st.plotly_chart(fig_cmp, use_container_width=True)
-
-                last_irr = irr_index[-1]
-                last_usd = usd_index[-1]
-                last_rate = rate_index[-1]
-                if last_irr > 105 and last_usd < 95:
-                    st.error(f"🔴 **تله دلار:** قیمت هر واحد به ریال {last_irr-100:+.1f}% رشد ولی به دلار {last_usd-100:+.1f}% افت. نرخ دلار {last_rate-100:+.1f}% رشد کرده — رشد ریالی فقط از دلار بوده.")
-                elif last_usd > 105:
-                    st.success(f"🟢 **سود دلاری واقعی:** قیمت هر واحد به دلار {last_usd-100:+.1f}% رشد (نرخ دلار {last_rate-100:+.1f}%).")
-                elif last_usd < 95:
-                    st.warning(f"🟡 **ضرر دلاری:** قیمت هر واحد به دلار {last_usd-100:+.1f}% افت کرده (نرخ دلار {last_rate-100:+.1f}%).")
-                else:
-                    st.info(f"⚪ قیمت هر واحد به دلار {last_usd-100:+.1f}% — تعادل نسبی.")
-
-                st.subheader("📋 تاریخچه رکوردها")
-                hc = st.columns([1.8, 1.4, 1.6, 1.6, 1.6, 1.6, 0.7, 0.7])
-                hc[0].caption("**تاریخ**")
-                hc[1].caption("**تعداد**")
-                hc[2].caption("**قیمت واحد (ریال)**")
-                hc[3].caption("**قیمت واحد (دلار)**")
-                hc[4].caption("**نرخ دلار**")
-                hc[5].caption("**بازده دلاری**")
-                hc[6].caption("**✏️**")
-                hc[7].caption("**🗑️**")
-                st.divider()
-
-                for row in reversed(comp_rows):
-                    r = row["record"]
-                    usd_return = (row["unit_price_usd"] / base_usd - 1) * 100 if base_usd else 0
-                    irr_disp = f"{row['unit_price_irr']:,.0f} ریال"
-                    usd_disp = f"${row['unit_price_usd']:,.4f}"
-
-                    rc = st.columns([1.8, 1.4, 1.6, 1.6, 1.6, 1.6, 0.7, 0.7])
-                    rc[0].markdown(f"📅 {row['date_jalali']}")
-                    rc[1].markdown(f"{row['quantity']:,.2f}")
-                    rc[2].markdown(irr_disp)
-                    rc[3].markdown(usd_disp)
-                    rc[4].markdown(f"{row['usd_rate']:,.0f}")
-
-                    if abs(usd_return) >= 0.05:
-                        color = "#10b981" if usd_return > 0 else "#ef4444"
-                        arrow = "↑" if usd_return > 0 else "↓"
-                        rc[5].markdown(
-                            f'<span style="color:{color};font-weight:700;">{arrow}{abs(usd_return):.1f}%</span>',
-                            unsafe_allow_html=True)
-                    else:
-                        rc[5].markdown("—")
-
-                    if rc[6].button("✏️", key=f"edit_btn_rec_{r['id']}"):
-                        st.session_state[f"edit_open_rec_{r['id']}"] = not st.session_state.get(f"edit_open_rec_{r['id']}", False)
-                    if rc[7].button("🗑️", key=f"del_rec_{r['id']}"):
-                        asset["records"] = [x for x in asset["records"] if x["id"] != r["id"]]
-                        st.session_state.data = data
-                        save_all(data)
-                        st.rerun()
-
-                    if st.session_state.get(f"edit_open_rec_{r['id']}", False):
-                        rvk = f"v_rec_{r['id']}"
-                        rfk = f"edit_rec_{r['id']}_v{get_version(rvk)}"
-                        with st.form(rfk):
-                            ec1, ec2, ec3 = st.columns([2, 2, 2])
-                            ed_date = ec1.text_input("تاریخ", value=r["date_jalali"])
-                            ed_qty = ec2.number_input("تعداد", value=float(r["quantity"]), min_value=0.0, format="%.4f", step=1.0)
-                            ed_price = ec3.number_input("قیمت هر واحد", value=float(r["unit_price"]), min_value=0.0, format="%.2f", step=1000.0)
-                            ed_note = st.text_input("توضیح", value=r.get("note", ""))
-                            if st.form_submit_button("💾 ذخیره", use_container_width=True):
-                                jd = parse_jalali(ed_date)
-                                if jd and ed_qty > 0 and ed_price > 0:
-                                    tp = r["date_gregorian"][11:16] if len(r.get("date_gregorian", "")) >= 16 else "00:00"
-                                    giso = jalali_to_gregorian_iso(jd, tp)
-                                    for k, x in enumerate(asset["records"]):
-                                        if x["id"] == r["id"]:
-                                            asset["records"][k] = {"id": r["id"], "date_gregorian": giso,
-                                                                  "date_jalali": jd.strftime("%Y/%m/%d"),
-                                                                  "quantity": ed_qty, "unit_price": ed_price, "note": ed_note.strip()}
-                                            break
-                                    st.session_state.data = data
-                                    st.session_state[f"edit_open_rec_{r['id']}"] = False
-                                    bump_version(rvk)
-                                    save_all(data)
-                                    st.rerun()
-                    st.divider()
-            else:
-                st.info("برای نمودار مقایسه‌ای، حداقل دو رکورد با نرخ دلار موجود لازم است.")
-
-        st.divider()
-        with st.expander("⚠️ حذف کل دارایی"):
-            _idx = next((i for i, x in enumerate(data["assets"]) if x["id"] == asset["id"]), 0)
-            ok = st.checkbox("مطمئنم", key=f"confirm_del_{asset['id']}_{_idx}")
-            if st.button("🗑️ حذف", disabled=not ok, key=f"del_btn_{asset['id']}_{_idx}"):
-                data["assets"] = [x for x in data["assets"] if x["id"] != asset["id"]]
-                st.session_state.data = data
+def render_sidebar_settings(data) -> None:
+    settings = data["settings"]
+    with st.expander("🎨 اولویت سربرگ‌ها", expanded=False):
+        order = list(settings.get("nav_order") or DEFAULT_NAV_ORDER)
+        for index, key in enumerate(order):
+            cols = st.columns([4, 1, 1])
+            cols[0].markdown(f"**{index + 1}.** {NAV_EMOJI.get(key, '')} {NAV_LABELS.get(key, key)}")
+            if cols[1].button("▲", key=f"nav_up_{key}", disabled=index == 0):
+                order[index - 1], order[index] = order[index], order[index - 1]
+                settings["nav_order"] = order
                 save_all(data)
-                st.session_state.pending_nav = "overview"
                 st.rerun()
+            if cols[2].button("▼", key=f"nav_down_{key}", disabled=index == len(order) - 1):
+                order[index + 1], order[index] = order[index], order[index + 1]
+                settings["nav_order"] = order
+                save_all(data)
+                st.rerun()
+    with st.expander("🌗 حالت روز / شب", expanded=False):
+        auto = st.checkbox("تغییر خودکار بر اساس ساعت", value=bool(settings.get("auto_theme", True)))
+        c1, c2 = st.columns(2)
+        day_start = c1.text_input("شروع روز", value=settings.get("day_start", "07:00"))
+        night_start = c2.text_input("شروع شب", value=settings.get("night_start", "19:00"))
+        if st.button("💾 ذخیرهٔ زمان‌بندی", key="save_theme_schedule", use_container_width=True):
+            settings["auto_theme"] = auto
+            settings["day_start"] = day_start
+            settings["night_start"] = night_start
+            save_all(data)
+            st.rerun()
+        if not settings.get("auto_theme", True):
+            manual_dark = st.checkbox("حالت شب دستی", value=bool(settings.get("dark_mode", False)))
+            if manual_dark != bool(settings.get("dark_mode", False)):
+                settings["dark_mode"] = manual_dark
+                save_all(data)
+                st.rerun()
+        st.caption(f"اکنون: {'🌙 شب' if auto_theme(settings) else '☀️ روز'} (ساعت تهران)")
+
+
+def page_settings(data) -> None:
+    st.header("⚙️ تنظیمات")
+    render_sidebar_settings(data)
+    with st.expander("💾 وضعیت ذخیره‌سازی", expanded=True):
+        local_ok = os.path.exists(DATA_FILE)
+        st.caption(f"{'✅' if local_ok else '❌'} فایل محلی data.json")
+        st.caption(f"{'✅' if (GITHUB_TOKEN and GITHUB_REPO) else '❌'} اتصال GitHub")
+        st.caption(f"آخرین ذخیره: {data.get('last_saved_jalali', '—')}")
+    st.download_button(
+        "📥 دانلود پشتیبان JSON",
+        data=json.dumps(data, ensure_ascii=False, indent=2),
+        file_name=f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+        mime="application/json",
+    )
+
+
+# ----------------------------- احراز هویت -----------------------------
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if not st.session_state.authenticated:
+    token = st.query_params.get("auth")
+    if token and token == AUTH_TOKEN:
+        st.session_state.authenticated = True
+
+if not st.session_state.authenticated:
+    inject_login()
+    st.markdown(
+        "<div class='login-card'><h2>🔐 داشبورد مالی</h2>"
+        "<p>برای دیدن دارایی‌ها و تحلیل‌ها، رمز عبور را وارد کنید.</p></div>",
+        unsafe_allow_html=True,
+    )
+    with st.form("login_form"):
+        password = st.text_input("رمز عبور", type="password", label_visibility="collapsed")
+        if st.form_submit_button("🚪 ورود", use_container_width=True):
+            if password == str(APP_PASSWORD):
+                st.session_state.authenticated = True
+                st.query_params["auth"] = AUTH_TOKEN
+                st.rerun()
+            else:
+                st.error("❌ رمز عبور اشتباه است.")
+    st.stop()
+
+# ----------------------------- بارگذاری داده -----------------------------
+if "data" not in st.session_state:
+    local = load_local_file()
+    remote = load_github_file()
+    chosen = local
+    if local and remote:
+        chosen = local if local.get("last_saved", "") >= remote.get("last_saved", "") else remote
+    elif remote:
+        chosen = remote
+    st.session_state.data = migrate_data(chosen or {})
+data = migrate_data(st.session_state.data)
+st.session_state.data = data
+inject_app(data)
+dark = auto_theme(data["settings"])
+
+# ----------------------------- سایدبار (سمت راست) -----------------------------
+with st.sidebar:
+    st.markdown("### 💼 داشبورد مالی")
+    st.caption(f"🗓️ {today_jalali_str()}")
+    rate, rate_date = current_rate(data)
+    if rate:
+        st.markdown(
+            "<div class='fin-card'><div class='stCaption'>💵 نرخ فعلی دلار</div>"
+            f"<div style='font-size:1.35rem;font-weight:800;color:#3b82f6;'>{fmt_num(rate)} <span style='font-size:0.75rem;'>ریال</span></div>"
+            f"<div class='stCaption'>آخرین: {rate_date}</div></div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.info("💡 هنوز نرخی ثبت نشده است.")
+    st.divider()
+    order = data["settings"].get("nav_order") or DEFAULT_NAV_ORDER
+    pages = [key for key in order if key in NAV_LABELS] + ["settings"]
+    pages = list(dict.fromkeys(pages))
+    selected = st.radio(
+        "ناوبری",
+        pages,
+        format_func=lambda key: f"{NAV_EMOJI.get(key, '')} {NAV_LABELS.get(key, key)}",
+        label_visibility="collapsed",
+    )
+    st.divider()
+    render_sidebar_settings(data)
+    st.divider()
+    if st.button("💾 ذخیره فوری", use_container_width=True):
+        save_all(data)
+    uploaded = st.file_uploader("📤 بازیابی از JSON", type=["json"])
+    if uploaded is not None:
+        try:
+            imported = migrate_data(json.loads(uploaded.read().decode("utf-8")))
+            st.session_state.data = imported
+            save_all(imported)
+            st.rerun()
+        except Exception as exc:
+            st.error(f"فایل معتبر نیست: {exc}")
+    if st.button("🚪 خروج", use_container_width=True):
+        st.session_state.authenticated = False
+        st.session_state.pop("data", None)
+        st.query_params.clear()
+        st.rerun()
+
+# ----------------------------- مسیر صفحات -----------------------------
+if selected == "overview":
+    page_overview(data, dark)
+    st.subheader("📈 روند ارزش سبد")
+    timeline = []
+    all_dates = sorted({row.get("date_gregorian", "")[:10] for asset in data.get("assets", []) for row in asset.get("records", [])}
+                       | {row.get("created_at", "")[:10] for row in data.get("usd_rates", [])})
+    for date_str in all_dates:
+        total = 0.0
+        for asset in data.get("assets", []):
+            history = [row for row in asset.get("records", []) if row.get("date_gregorian", "")[:10] <= date_str]
+            record = history[-1] if history else None
+            if not record:
+                continue
+            rate_value = rate_at(data, date_str)
+            unit = float(record.get("unit_price", 0) or 0)
+            if asset.get("currency", "IRR") == "USD":
+                unit *= rate_value or 0
+            total += unit * float(record.get("quantity", 0) or 0)
+        timeline.append({"تاریخ": iso_to_jalali(date_str + "T00:00:00", False), "ارزش": total})
+    if len(timeline) >= 2:
+        figure = px.line(pd.DataFrame(timeline), x="تاریخ", y="ارزش", markers=True)
+        st.plotly_chart(chart_layout(figure, dark, 320), use_container_width=True)
+elif selected == "journal":
+    page_add_asset(data)
+elif selected == "assets":
+    st.header("🧾 دارایی‌ها")
+    rate, _rate_date = current_rate(data)
+    assets = data.get("assets", [])
+    if not assets:
+        st.info("هنوز دارایی‌ای ثبت نشده است. از صفحهٔ «➕ افزودن دارایی» شروع کنید.")
+    else:
+        labels = {asset["id"]: asset.get("name", "") for asset in assets}
+        asset_id = st.selectbox("دارایی", list(labels), format_func=labels.get)
+        asset = next(item for item in assets if item["id"] == asset_id)
+        render_asset_detail(data, asset, dark)
+        st.divider()
+        st.subheader("📋 همهٔ دارایی‌ها")
+        render_table(pd.DataFrame([{
+            "دارایی": item.get("name"),
+            "ارز": currency_label(item.get("currency", "IRR")),
+            "ارزش": fmt_num(asset_value(item, rate)[0]),
+            "معادل دلاری": f"${asset_value(item, rate)[1]:,.2f}" if asset_value(item, rate)[1] else "—",
+        } for item in assets]))
+elif selected == "usd":
+    page_usd(data, dark)
+elif selected == "gold":
+    page_gold(data, dark)
+elif selected == "synthetic":
+    page_synthetic(data, dark)
+elif selected == "monthly":
+    page_monthly(data, dark)
+elif selected == "settings":
+    page_settings(data)
